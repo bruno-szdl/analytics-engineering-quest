@@ -128,21 +128,3 @@ export function seedLoaded(state: GameState, seedName: string): boolean {
   return state.loadedSeeds.has(seedName)
 }
 
-export function manuallyMarked(state: GameState): boolean {
-  return state.manuallyMarkedComplete.has(state.currentLevelId)
-}
-
-/** True if the current level's quiz has been answered correctly. */
-export function quizCorrect(state: GameState): boolean {
-  return state.correctlyAnsweredQuizzes.has(state.currentLevelId)
-}
-
-/** True if the named snapshot has been run at least N times in the current level. */
-export function snapshotRanAtLeast(state: GameState, name: string, n: number): boolean {
-  return (state.snapshotRunCounts[name] ?? 0) >= n
-}
-
-/** True if the snapshot has closed at least N historical rows — proof that history was captured. */
-export function snapshotClosedAtLeast(state: GameState, name: string, n: number): boolean {
-  return (state.snapshotClosedRows[name] ?? 0) >= n
-}

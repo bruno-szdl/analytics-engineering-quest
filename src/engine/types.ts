@@ -7,20 +7,14 @@ export interface GameState {
   shownModels: Set<string>
   /** Columns observed the last time each model was successfully run. */
   modelColumns: Record<string, string[]>
-  /** Seeds that have been loaded via `dbt seed` in the current level. */
+  /** Seeds that have been loaded via `dbt seed` in the current lesson. */
   loadedSeeds: Set<string>
-  /** True if `dbt build` has completed without failures in the current level. */
+  /** True if `dbt build` has completed without failures in the current lesson. */
   buildSucceeded: boolean
-  /** How many times each snapshot has been run in the current level. */
+  /** How many times each snapshot has been run — kept for engine compatibility. */
   snapshotRunCounts: Record<string, number>
-  /** Cumulative count of rows closed out by each snapshot — proves history was captured. */
+  /** Cumulative count of rows closed out by each snapshot. */
   snapshotClosedRows: Record<string, number>
-  /** Level ids the learner has intentionally marked as complete. */
-  manuallyMarkedComplete: Set<number>
-  /** Level ids whose quiz the learner has answered correctly. */
-  correctlyAnsweredQuizzes: Set<number>
-  /** The current level id, used by manual-completion validators. */
-  currentLevelId: number
 }
 
 export interface GoalDagShape {
@@ -37,49 +31,59 @@ export interface GoalDagShape {
  */
 export type Seeds = Record<string, string>
 
-/** A character who can send a story message in the level intro. */
-export type StorySender = 'priya' | 'yuki' | 'sofie' | 'marcus'
-
-export interface StoryMessage {
-  from: StorySender
-  /** Optional clock label like "09:14". Purely cosmetic. */
-  time?: string
-  /** Message body. Keep to 1–3 sentences; no markdown. */
-  body: string
+export interface Task {
+  /** Stable id, unique within the lesson. Used for progress tracking. */
+  id: string
+  /** Short instruction shown to the learner (1-2 sentences). */
+  prompt: string
+  /** Optional hint revealed on demand. */
+  hint?: string
+  validate: (state: GameState) => boolean
 }
 
-export interface Level {
+export interface Quiz {
+  question: string
+  options: string[]
+  correctIndex: number
+  explanation: string
+}
+
+/**
+ * Side-panels that can be progressively introduced as lessons require them.
+ * Editor + Console are always visible and not gated.
+ */
+export type PanelKey = 'files' | 'warehouse' | 'lineage'
+
+export const ALL_PANELS: readonly PanelKey[] = ['files', 'warehouse', 'lineage']
+
+export interface FurtherReadingLink {
+  /** Short label, e.g. "ref() function" or "Materializations". */
+  label: string
+  /** Absolute URL — opens in a new tab. */
+  url: string
+}
+
+export interface Lesson {
   id: number
-  chapter: number
   title: string
-  description: string
-  hint?: string
-  /** Optional Slack-style intro thread shown above the description in the level modal. */
-  story?: { messages: StoryMessage[] }
+  /** Short conceptual explanation shown at the top of the lesson panel. */
+  concept: string
   initialFiles: Record<string, string>
   seeds?: Seeds
-  /** Models to silently materialize when the level loads, so the player can start from an already-run state. */
+  /** Models to silently materialize when the lesson loads. */
   preRanModels?: string[]
-  /** Snapshots to silently capture when the level loads, so downstream models can already ref() them. */
-  preRanSnapshots?: string[]
-  goal: {
-    description: string
+  tasks: Task[]
+  quiz?: Quiz
+  goal?: {
     dagShape?: GoalDagShape
   }
-  /** Which checklist items to show. Defaults to ['files', 'run', 'test'] when omitted. */
-  requiredSteps?: ('files' | 'run' | 'test')[]
-  /** If true, the learner must press a "Mark complete" button to finish the lesson. */
-  manualCompletion?: boolean
-  /** If true, the level's quiz is the gate — answering correctly is what completes the level. */
-  quizGates?: boolean
-  validate: (state: GameState) => { passed: boolean; reason?: string }
-  badge?: { id: string; name: string; emoji: string; caption?: string }
-  quiz?: {
-    question: string
-    options: [string, string, string, string]
-    correctIndex: number
-    explanation: string
-  }
-  /** Links to the official dbt docs that cover this level's topic. */
-  docs?: { label: string; url: string }[]
+  /**
+   * Panels this lesson needs in addition to whatever the learner has already
+   * seen. Omit (or leave undefined) to show every panel — the safe default for
+   * advanced lessons. Use `[]` to start with the bare minimum (lesson 1).
+   */
+  panels?: PanelKey[]
+  /** Optional links to the official dbt docs (or similar), rendered at the
+   * bottom of the lesson panel. Skip the field to render no section. */
+  furtherReading?: FurtherReadingLink[]
 }

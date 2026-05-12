@@ -2,7 +2,6 @@ import { useMemo, useEffect, useRef, useCallback } from 'react'
 import ReactFlow, {
   Background,
   BackgroundVariant,
-  MiniMap,
   Controls,
   MarkerType,
   useNodesState,
@@ -25,6 +24,7 @@ import { type GoalDagShape } from '../engine/types'
 export type { GoalDagShape }
 
 type NodeStatus = 'idle' | 'ok' | 'fail' | 'error'
+type Orientation = 'horizontal' | 'vertical'
 
 interface ModelNodeData {
   label: string
@@ -32,6 +32,7 @@ interface ModelNodeData {
   status: NodeStatus
   hasCycle: boolean
   isDark: boolean
+  orientation: Orientation
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ function ModelNode({ data }: { data: ModelNodeData }) {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={data.orientation === 'vertical' ? Position.Top : Position.Left}
         style={{ background: color, border: 'none', width: 8, height: 8 }}
       />
 
@@ -179,7 +180,7 @@ function ModelNode({ data }: { data: ModelNodeData }) {
 
       <Handle
         type="source"
-        position={Position.Right}
+        position={data.orientation === 'vertical' ? Position.Bottom : Position.Right}
         style={{ background: color, border: 'none', width: 8, height: 8 }}
       />
     </div>
@@ -190,11 +191,18 @@ const nodeTypes: NodeTypes = { modelNode: ModelNode }
 
 // ── dagre layout ──────────────────────────────────────────────────────────────
 
-function applyDagreLayout(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+function applyDagreLayout(
+  nodes: Node[],
+  edges: Edge[],
+  orientation: Orientation,
+): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 90, marginx: 24, marginy: 24 })
+  const rankdir = orientation === 'vertical' ? 'TB' : 'LR'
+  // Tighter ranksep when stacked vertically — vertical real estate is the constraint.
+  const ranksep = orientation === 'vertical' ? 60 : 90
+  g.setGraph({ rankdir, nodesep: 40, ranksep, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
 
   nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }))
@@ -218,6 +226,7 @@ function toRfNodes(
   ranModels: Set<string>,
   testResults: Record<string, 'pass' | 'fail' | 'untested'>,
   isDark: boolean,
+  orientation: Orientation,
 ): Node[] {
   return dagNodes.map((n) => {
     let status: NodeStatus = 'idle'
@@ -230,7 +239,7 @@ function toRfNodes(
       id: n.id,
       type: 'modelNode',
       position: { x: 0, y: 0 },
-      data: { label: n.label, layer: n.layer, status, hasCycle: n.hasCycle, isDark } satisfies ModelNodeData,
+      data: { label: n.label, layer: n.layer, status, hasCycle: n.hasCycle, isDark, orientation } satisfies ModelNodeData,
     }
   })
 }
@@ -327,14 +336,8 @@ function DagCanvas({ rfNodes, rfEdges, goalShape, isDark }: DagCanvasProps) {
   }, [])
 
   const bgDotColor = isDark ? '#30363d' : '#d0d7de'
-  const minimapBg = isDark ? '#161b22' : '#f6f8fa'
-  const minimapBorder = isDark ? '#30363d' : '#d0d7de'
-  const minimapMask = isDark ? '#0d111766' : '#ffffff66'
   const controlsBg = isDark ? '#161b22' : '#ffffff'
   const controlsBorder = isDark ? '#30363d' : '#d0d7de'
-
-  const failColor = isDark ? FAIL_COLOR_DARK : FAIL_COLOR_LIGHT
-  const idleColor = isDark ? IDLE_DOT_DARK : IDLE_DOT_LIGHT
 
   return (
     <div className="relative w-full h-full">
@@ -357,18 +360,6 @@ function DagCanvas({ rfNodes, rfEdges, goalShape, isDark }: DagCanvasProps) {
           size={1}
           color={bgDotColor}
           style={{ opacity: 0.5 }}
-        />
-        <MiniMap
-          nodeColor={(n) => {
-            const d = n.data as ModelNodeData
-            return d.hasCycle ? failColor : layerColor(d.layer, isDark) ?? idleColor
-          }}
-          style={{
-            background: minimapBg,
-            border: `1px solid ${minimapBorder}`,
-            borderRadius: '6px',
-          }}
-          maskColor={minimapMask}
         />
         <Controls
           style={{
@@ -416,9 +407,10 @@ function EmptyState() {
 interface DagPanelProps {
   goalShape?: GoalDagShape
   embedded?: boolean
+  orientation?: Orientation
 }
 
-export default function DagPanel({ goalShape, embedded = false }: DagPanelProps) {
+export default function DagPanel({ goalShape, embedded = false, orientation = 'horizontal' }: DagPanelProps) {
   const files = useGameStore((s) => s.files)
   const ranModels = useGameStore((s) => s.ranModels)
   const testResults = useGameStore((s) => s.testResults)
@@ -427,11 +419,11 @@ export default function DagPanel({ goalShape, embedded = false }: DagPanelProps)
 
   const { rfNodes, rfEdges } = useMemo(() => {
     const { nodes: dagNodes, edges: dagEdges } = buildDag(files)
-    const rawNodes = toRfNodes(dagNodes, ranModels, testResults, isDark)
+    const rawNodes = toRfNodes(dagNodes, ranModels, testResults, isDark, orientation)
     const rawEdges = toRfEdges(dagEdges, isDark)
-    const { nodes, edges } = applyDagreLayout(rawNodes, rawEdges)
+    const { nodes, edges } = applyDagreLayout(rawNodes, rawEdges, orientation)
     return { rfNodes: nodes, rfEdges: edges }
-  }, [files, ranModels, testResults, isDark])
+  }, [files, ranModels, testResults, isDark, orientation])
 
   const isEmpty = rfNodes.length === 0
 

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { getLevelById } from '../levels'
-import { getModelName } from '../engine/compiler'
-import LevelPanel from './LevelPanel'
+import { getLessonById } from '../lessons'
+import { ALL_PANELS } from '../engine/types'
+import LessonPanel from './LessonPanel'
 import FileExplorer from './FileExplorer'
 import DatabaseExplorer from './DatabaseExplorer'
 import Editor from './Editor'
@@ -12,7 +12,7 @@ import DagPanel from './DagPanel'
 
 type MobileTab = 'lesson' | 'files' | 'editor' | 'console' | 'lineage'
 
-const TABS: { id: MobileTab; label: string }[] = [
+const ALL_TABS: { id: MobileTab; label: string }[] = [
   { id: 'lesson', label: 'Lesson' },
   { id: 'files', label: 'Files' },
   { id: 'editor', label: 'Editor' },
@@ -23,11 +23,27 @@ const TABS: { id: MobileTab; label: string }[] = [
 export default function MobileLayout() {
   const [tab, setTab] = useState<MobileTab>('lesson')
   const [consoleSub, setConsoleSub] = useState<'commands' | 'results'>('commands')
+  const currentLessonId = useGameStore((s) => s.currentLessonId)
+  const lessonPanels = getLessonById(currentLessonId)?.panels ?? ALL_PANELS
+  const seenFiles = lessonPanels.includes('files')
+  const seenWarehouse = lessonPanels.includes('warehouse')
+  const seenLineage = lessonPanels.includes('lineage')
 
-  const goToConsole = (sub: 'commands' | 'results') => {
-    setConsoleSub(sub)
-    setTab('console')
-  }
+  // The mobile "Files" tab also contains the Database explorer, so we keep it
+  // visible whenever either panel is unlocked for this lesson.
+  const showFilesTab = seenFiles || seenWarehouse
+  const showLineageTab = seenLineage
+
+  const tabs = ALL_TABS.filter((t) => {
+    if (t.id === 'files') return showFilesTab
+    if (t.id === 'lineage') return showLineageTab
+    return true
+  })
+
+  // If the user previously selected a tab that's now hidden (e.g. they were
+  // on Lineage and switched back to lesson 1), fall back to Lesson during
+  // render rather than via an effect.
+  const activeTab: MobileTab = tabs.some((t) => t.id === tab) ? tab : 'lesson'
 
   return (
     <div
@@ -38,45 +54,41 @@ export default function MobileLayout() {
         paddingRight: 'env(safe-area-inset-right)',
       }}
     >
-      {/* Body */}
       <div className="flex-1 overflow-hidden">
-        {tab === 'lesson' && (
+        {activeTab === 'lesson' && (
           <div className="h-full overflow-hidden">
-            <LevelPanel />
+            <LessonPanel />
           </div>
         )}
-        {tab === 'files' && (
+        {activeTab === 'files' && (
           <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--color-base)' }}>
             <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
-              <div className="flex-1 overflow-hidden min-h-0">
-                <FileExplorer />
-              </div>
-              <DatabaseExplorer />
+              {seenFiles && (
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <FileExplorer />
+                </div>
+              )}
+              {seenWarehouse && <DatabaseExplorer />}
             </div>
           </div>
         )}
-        {tab === 'editor' && (
+        {activeTab === 'editor' && (
           <div className="h-full flex flex-col overflow-hidden">
-            <MobileActionBar onAfterRun={() => goToConsole('commands')} onAfterShow={() => goToConsole('results')} />
-            <div className="flex-1 overflow-hidden">
-              <Editor />
-            </div>
+            <Editor />
           </div>
         )}
-        {tab === 'console' && (
+        {activeTab === 'console' && (
           <div className="h-full flex flex-col overflow-hidden">
-            <MobileActionBar onAfterRun={() => goToConsole('commands')} onAfterShow={() => goToConsole('results')} />
             <ConsoleSubTabs sub={consoleSub} setSub={setConsoleSub} />
           </div>
         )}
-        {tab === 'lineage' && (
+        {activeTab === 'lineage' && (
           <div className="h-full flex flex-col overflow-hidden">
             <LineageView />
           </div>
         )}
       </div>
 
-      {/* Bottom tab bar */}
       <nav
         className="flex shrink-0"
         role="tablist"
@@ -87,8 +99,8 @@ export default function MobileLayout() {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {TABS.map((t) => {
-          const active = t.id === tab
+        {tabs.map((t) => {
+          const active = t.id === activeTab
           return (
             <button
               key={t.id}
@@ -119,89 +131,6 @@ export default function MobileLayout() {
   )
 }
 
-function MobileActionBar({
-  onAfterRun,
-  onAfterShow,
-}: {
-  onAfterRun: () => void
-  onAfterShow: () => void
-}) {
-  const running = useGameStore((s) => s.running)
-  const activeFile = useGameStore((s) => s.activeFile)
-  const ranModels = useGameStore((s) => s.ranModels)
-  const runCommand = useGameStore((s) => s.runCommand)
-  const showModel = useGameStore((s) => s.showModel)
-
-  const model =
-    activeFile && activeFile.startsWith('models/') && activeFile.endsWith('.sql')
-      ? getModelName(activeFile)
-      : null
-  const canShow = !!model && ranModels.has(model)
-
-  return (
-    <div
-      className="flex items-center gap-1.5 shrink-0 overflow-x-auto"
-      style={{
-        padding: '8px',
-        background: 'var(--color-surface)',
-        borderBottom: '1px solid var(--color-border)',
-      }}
-    >
-      <ActBtn
-        label="Run"
-        primary
-        disabled={running}
-        onClick={() => { onAfterRun(); runCommand('dbt run') }}
-      />
-      <ActBtn
-        label="Test"
-        disabled={running}
-        onClick={() => { onAfterRun(); runCommand('dbt test') }}
-      />
-      <ActBtn
-        label="Show"
-        disabled={running || !canShow}
-        onClick={() => { if (model) { onAfterShow(); showModel(model) } }}
-      />
-    </div>
-  )
-}
-
-function ActBtn({
-  label,
-  onClick,
-  primary,
-  disabled,
-}: {
-  label: string
-  onClick: () => void
-  primary?: boolean
-  disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        height: '32px',
-        padding: '0 12px',
-        borderRadius: '5px',
-        fontFamily: 'IBM Plex Sans, sans-serif',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
-        whiteSpace: 'nowrap',
-        background: primary ? 'var(--color-accent-orange)' : 'transparent',
-        border: primary ? '1px solid var(--color-accent-orange)' : '1px solid var(--color-border)',
-        color: primary ? 'var(--color-base)' : 'var(--color-text)',
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
 function ConsoleSubTabs({
   sub,
   setSub,
@@ -211,10 +140,7 @@ function ConsoleSubTabs({
 }) {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <div
-        className="flex shrink-0"
-        style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}
-      >
+      <div className="flex shrink-0" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
         <SubTabBtn label="Commands" active={sub === 'commands'} onClick={() => setSub('commands')} />
         <SubTabBtn label="Results" active={sub === 'results'} onClick={() => setSub('results')} />
       </div>
@@ -225,15 +151,7 @@ function ConsoleSubTabs({
   )
 }
 
-function SubTabBtn({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
+function SubTabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -257,7 +175,7 @@ function SubTabBtn({
 }
 
 function LineageView() {
-  const currentLevelId = useGameStore((s) => s.currentLevelId)
-  const level = getLevelById(currentLevelId)
-  return <DagPanel embedded goalShape={level?.goal.dagShape} />
+  const currentLessonId = useGameStore((s) => s.currentLessonId)
+  const lesson = getLessonById(currentLessonId)
+  return <DagPanel embedded goalShape={lesson?.goal?.dagShape} />
 }

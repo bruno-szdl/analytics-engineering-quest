@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
+import PanelRevealBadge from './PanelRevealBadge'
 
 // ── tree types ────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,20 @@ function buildTree(files: Record<string, string>): TreeNode[] {
   }
 
   return root
+}
+
+function splitName(path: string): { dir: string; base: string } {
+  const i = path.lastIndexOf('/')
+  return i === -1
+    ? { dir: '', base: path }
+    : { dir: path.slice(0, i), base: path.slice(i + 1) }
+}
+
+function basenameWithoutExt(name: string): { stem: string; ext: string } {
+  const i = name.lastIndexOf('.')
+  return i === -1 || i === 0
+    ? { stem: name, ext: '' }
+    : { stem: name.slice(0, i), ext: name.slice(i) }
 }
 
 // ── icons ─────────────────────────────────────────────────────────────────────
@@ -104,21 +119,235 @@ function PlusIcon() {
   )
 }
 
+function PencilIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25a1.75 1.75 0 0 1 .445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064L11.189 6.25Zm2.183-3.13a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.232-1.233a.25.25 0 0 0 0-.354Z" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+    </svg>
+  )
+}
+
+// ── inline inputs ─────────────────────────────────────────────────────────────
+
+/**
+ * Inline input for creating a file inside a specific folder. Renders a
+ * non-editable folder-prefix label and an editable filename field. Auto-suffix
+ * `.sql` if the typed name has no extension.
+ */
+function CreateInDirInput({
+  dirPath,
+  depth,
+  onCommit,
+  onCancel,
+  hasConflict,
+}: {
+  dirPath: string
+  depth: number
+  onCommit: (name: string) => void
+  onCancel: () => void
+  hasConflict: (name: string) => boolean
+}) {
+  const [value, setValue] = useState('')
+  const [flash, setFlash] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const indent = 8 + depth * 14
+  const cancelRef = useRef(false)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const submit = () => {
+    const name = value.trim()
+    if (!name) {
+      onCancel()
+      return
+    }
+    const final = /\.[a-zA-Z0-9]+$/.test(name) ? name : `${name}.sql`
+    if (hasConflict(final)) {
+      setFlash(true)
+      window.setTimeout(() => setFlash(false), 1000)
+      return
+    }
+    onCommit(final)
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: `3px 8px 3px ${indent}px`,
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.6875rem',
+        background: 'var(--color-border-subtle)',
+      }}
+    >
+      <FileIcon name={value || '.sql'} />
+      <span style={{ color: 'var(--color-muted)' }}>{dirPath}/</span>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submit() }
+          else if (e.key === 'Escape') {
+            cancelRef.current = true
+            onCancel()
+          }
+        }}
+        onBlur={() => {
+          if (cancelRef.current) { cancelRef.current = false; return }
+          submit()
+        }}
+        placeholder="filename"
+        spellCheck={false}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          background: 'var(--color-surface)',
+          border: `1px solid ${flash ? 'var(--color-fail)' : 'var(--color-accent-orange-dim)'}`,
+          borderRadius: '3px',
+          color: 'var(--color-text)',
+          fontSize: '0.6875rem',
+          fontFamily: 'JetBrains Mono, monospace',
+          padding: '2px 5px',
+          outline: 'none',
+          transition: 'border-color 0.15s',
+        }}
+      />
+    </div>
+  )
+}
+
+/**
+ * Inline rename input that replaces a FileItem's label. Pre-fills with the
+ * filename; auto-selects the stem (everything before the last dot) so the
+ * learner can retype without nuking the extension.
+ */
+function RenameInput({
+  initialName,
+  depth,
+  onCommit,
+  onCancel,
+  hasConflict,
+}: {
+  initialName: string
+  depth: number
+  onCommit: (name: string) => void
+  onCancel: () => void
+  hasConflict: (name: string) => boolean
+}) {
+  const [value, setValue] = useState(initialName)
+  const [flash, setFlash] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const indent = 8 + depth * 14
+  const cancelRef = useRef(false)
+
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    const { stem } = basenameWithoutExt(initialName)
+    el.setSelectionRange(0, stem.length)
+  }, [initialName])
+
+  const submit = () => {
+    const name = value.trim()
+    if (!name || name === initialName) {
+      onCancel()
+      return
+    }
+    if (hasConflict(name)) {
+      setFlash(true)
+      window.setTimeout(() => setFlash(false), 1000)
+      return
+    }
+    onCommit(name)
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: `3px 8px 3px ${indent}px`,
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.6875rem',
+        background: 'var(--color-border-subtle)',
+      }}
+    >
+      <FileIcon name={value} />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submit() }
+          else if (e.key === 'Escape') {
+            cancelRef.current = true
+            onCancel()
+          }
+        }}
+        onBlur={() => {
+          if (cancelRef.current) { cancelRef.current = false; return }
+          submit()
+        }}
+        spellCheck={false}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          background: 'var(--color-surface)',
+          border: `1px solid ${flash ? 'var(--color-fail)' : 'var(--color-accent-orange-dim)'}`,
+          borderRadius: '3px',
+          color: 'var(--color-text)',
+          fontSize: '0.6875rem',
+          fontFamily: 'JetBrains Mono, monospace',
+          padding: '2px 5px',
+          outline: 'none',
+          transition: 'border-color 0.15s',
+        }}
+      />
+    </div>
+  )
+}
+
 // ── tree nodes ────────────────────────────────────────────────────────────────
 
 interface ItemProps {
   node: TreeNode
   depth: number
   activeFile: string | null
+  renaming: string | null
+  creatingInDir: string | null
+  alwaysShowActions: boolean
+  files: Record<string, string>
   onOpen: (path: string) => void
   onDelete: (path: string) => void
   onCreateInDir: (dirPath: string) => void
+  onCommitCreate: (dirPath: string, name: string) => void
+  onCancelCreate: () => void
+  onStartRename: (path: string) => void
+  onCommitRename: (oldPath: string, newName: string) => void
+  onCancelRename: () => void
 }
 
-function DirItem({ node, depth, activeFile, onOpen, onDelete, onCreateInDir }: ItemProps & { node: DirNode }) {
+function DirItem({ node, depth, ...rest }: ItemProps & { node: DirNode }) {
   const [expanded, setExpanded] = useState(true)
   const [hovered, setHovered] = useState(false)
   const indent = 8 + depth * 14
+  const isCreatingHere = rest.creatingInDir === node.path
+  const showActions = hovered || rest.alwaysShowActions || isCreatingHere
 
   return (
     <div>
@@ -142,24 +371,20 @@ function DirItem({ node, depth, activeFile, onOpen, onDelete, onCreateInDir }: I
             userSelect: 'none',
             boxSizing: 'border-box',
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--color-border-subtle)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent'
-          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-border-subtle)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
         >
           <ChevronIcon expanded={expanded} />
           <FolderIcon open={expanded} />
           <span style={{ marginLeft: '4px' }}>{node.name}</span>
         </button>
 
-        {hovered && (
+        {showActions && (
           <button
             onClick={(e) => {
               e.stopPropagation()
               if (!expanded) setExpanded(true)
-              onCreateInDir(node.path)
+              rest.onCreateInDir(node.path)
             }}
             title={`New file in ${node.path}/`}
             style={{
@@ -176,38 +401,56 @@ function DirItem({ node, depth, activeFile, onOpen, onDelete, onCreateInDir }: I
               alignItems: 'center',
               borderRadius: '3px',
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--color-accent-orange)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--color-muted)'
-            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-accent-orange)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-muted)' }}
           >
             <PlusIcon />
           </button>
         )}
       </div>
 
-      {expanded &&
-        node.children.map((child) => (
-          <TreeItem
-            key={child.path}
-            node={child}
-            depth={depth + 1}
-            activeFile={activeFile}
-            onOpen={onOpen}
-            onDelete={onDelete}
-            onCreateInDir={onCreateInDir}
-          />
-        ))}
+      {expanded && (
+        <>
+          {isCreatingHere && (
+            <CreateInDirInput
+              dirPath={node.path}
+              depth={depth + 1}
+              onCommit={(name) => rest.onCommitCreate(node.path, name)}
+              onCancel={rest.onCancelCreate}
+              hasConflict={(name) => `${node.path}/${name}` in rest.files}
+            />
+          )}
+          {node.children.map((child) => (
+            <TreeItem key={child.path} {...rest} node={child} depth={depth + 1} />
+          ))}
+        </>
+      )}
     </div>
   )
 }
 
-function FileItem({ node, depth, activeFile, onOpen, onDelete }: ItemProps & { node: FileNode }) {
+function FileItem({ node, depth, ...rest }: ItemProps & { node: FileNode }) {
   const [hovered, setHovered] = useState(false)
-  const isActive = node.path === activeFile
+  const isActive = node.path === rest.activeFile
   const indent = 8 + depth * 14
+  const isRenaming = rest.renaming === node.path
+  const showActions = hovered || rest.alwaysShowActions
+
+  if (isRenaming) {
+    const { dir, base } = splitName(node.path)
+    return (
+      <RenameInput
+        initialName={base}
+        depth={depth}
+        onCommit={(name) => rest.onCommitRename(node.path, dir ? `${dir}/${name}` : name)}
+        onCancel={rest.onCancelRename}
+        hasConflict={(name) => {
+          const newPath = dir ? `${dir}/${name}` : name
+          return newPath !== node.path && newPath in rest.files
+        }}
+      />
+    )
+  }
 
   return (
     <div
@@ -216,10 +459,11 @@ function FileItem({ node, depth, activeFile, onOpen, onDelete }: ItemProps & { n
       onMouseLeave={() => setHovered(false)}
     >
       <button
-        onClick={() => onOpen(node.path)}
+        onClick={() => rest.onOpen(node.path)}
+        onDoubleClick={() => rest.onStartRename(node.path)}
         className="flex items-center gap-1.5 w-full"
         style={{
-          padding: `3px 28px 3px ${indent}px`,
+          padding: `3px 44px 3px ${indent}px`,
           background: isActive ? 'var(--color-accent-bg)' : 'transparent',
           border: 'none',
           borderLeft: `2px solid ${isActive ? 'var(--color-accent-orange)' : 'transparent'}`,
@@ -250,41 +494,53 @@ function FileItem({ node, depth, activeFile, onOpen, onDelete }: ItemProps & { n
         </span>
       </button>
 
-      {hovered && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete(node.path)
-          }}
-          title="Delete file"
+      {showActions && (
+        <div
           style={{
             position: 'absolute',
-            right: '5px',
+            right: '4px',
             top: '50%',
             transform: 'translateY(-50%)',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-muted)',
-            padding: '2px',
             display: 'flex',
             alignItems: 'center',
-            borderRadius: '3px',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--color-fail)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--color-muted)'
+            gap: '2px',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
-          </svg>
-        </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); rest.onStartRename(node.path) }}
+            title="Rename (F2)"
+            style={iconButtonStyle()}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-accent-orange)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-muted)' }}
+          >
+            <PencilIcon />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); rest.onDelete(node.path) }}
+            title="Delete file"
+            style={iconButtonStyle()}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-fail)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-muted)' }}
+          >
+            <TrashIcon />
+          </button>
+        </div>
       )}
     </div>
   )
+}
+
+function iconButtonStyle(): React.CSSProperties {
+  return {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'var(--color-muted)',
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    borderRadius: '3px',
+  }
 }
 
 function TreeItem(props: ItemProps) {
@@ -302,39 +558,91 @@ export default function FileExplorer() {
   const openFile = useGameStore((s) => s.openFile)
   const createFile = useGameStore((s) => s.createFile)
   const deleteFile = useGameStore((s) => s.deleteFile)
+  const renameFile = useGameStore((s) => s.renameFile)
 
+  // Root-level create (full path required — caters to creating new folders).
   const [creating, setCreating] = useState(false)
   const [newPath, setNewPath] = useState('')
   const [focusTick, setFocusTick] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const rootInputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
+
+  // In-folder create + inline rename state (mutually exclusive with each other
+  // and with root create, since all consume the same input attention).
+  const [creatingInDir, setCreatingInDir] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+
+  // Touch / no-hover devices always show row actions (otherwise users can't
+  // discover them without a hover state).
+  const alwaysShowActions = typeof window !== 'undefined'
+    && window.matchMedia('(hover: none)').matches
 
   useEffect(() => {
     if (creating) {
-      inputRef.current?.focus()
-      const el = inputRef.current
+      rootInputRef.current?.focus()
+      const el = rootInputRef.current
       if (el) el.setSelectionRange(el.value.length, el.value.length)
     }
   }, [creating, focusTick])
 
-  const submit = useCallback(() => {
+  // F2 to rename the active file, as long as focus isn't trapped by an
+  // editable input (e.g. Monaco). We bail when the active element is inside
+  // any input, textarea, or contenteditable so we don't fight other widgets.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F2') return
+      if (renaming || creatingInDir || creating) return
+      if (!activeFile) return
+      const t = document.activeElement as HTMLElement | null
+      if (t) {
+        const tag = t.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return
+        if (t.closest('.monaco-editor')) return
+      }
+      e.preventDefault()
+      setRenaming(activeFile)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeFile, renaming, creatingInDir, creating])
+
+  const submitRootCreate = useCallback(() => {
     const path = newPath.trim()
-    if (path && !path.endsWith('/')) createFile(path, '')
+    if (path && !path.endsWith('/') && !(path in files)) createFile(path, '')
     setCreating(false)
     setNewPath('')
-  }, [newPath, createFile])
+  }, [newPath, createFile, files])
 
   const startCreateInDir = useCallback((dirPath: string) => {
-    setNewPath(`${dirPath}/`)
-    setCreating(true)
-    setFocusTick((t) => t + 1)
+    setCreating(false)
+    setRenaming(null)
+    setCreatingInDir(dirPath)
   }, [])
 
   const startCreateAtRoot = useCallback(() => {
+    setCreatingInDir(null)
+    setRenaming(null)
     setNewPath('')
     setCreating((c) => !c)
     setFocusTick((t) => t + 1)
   }, [])
+
+  const commitCreateInDir = useCallback((dirPath: string, name: string) => {
+    const fullPath = `${dirPath}/${name}`
+    if (!(fullPath in files)) createFile(fullPath, '')
+    setCreatingInDir(null)
+  }, [createFile, files])
+
+  const startRename = useCallback((path: string) => {
+    setCreating(false)
+    setCreatingInDir(null)
+    setRenaming(path)
+  }, [])
+
+  const commitRename = useCallback((oldPath: string, newPath: string) => {
+    renameFile(oldPath, newPath)
+    setRenaming(null)
+  }, [renameFile])
 
   const tree = buildTree(files)
 
@@ -349,6 +657,7 @@ export default function FileExplorer() {
         style={{ height: '36px', padding: '0 8px', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}
       >
         <span
+          className="flex items-center"
           style={{
             color: 'var(--color-text-muted)',
             fontFamily: 'JetBrains Mono, monospace',
@@ -358,6 +667,7 @@ export default function FileExplorer() {
           }}
         >
           Files
+          <PanelRevealBadge panel="files" />
         </span>
         <button
           onClick={startCreateAtRoot}
@@ -387,20 +697,20 @@ export default function FileExplorer() {
         </button>
       </div>
 
-      {/* New-file input */}
+      {/* Root-level new-file input */}
       {creating && (
         <div
           className="shrink-0"
           style={{ padding: '6px 8px', background: 'var(--color-base)', borderBottom: '1px solid var(--color-border)' }}
         >
           <input
-            ref={inputRef}
+            ref={rootInputRef}
             value={newPath}
             onChange={(e) => setNewPath(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
-                submit()
+                submitRootCreate()
               } else if (e.key === 'Escape') {
                 cancelRef.current = true
                 setCreating(false)
@@ -412,7 +722,7 @@ export default function FileExplorer() {
                 cancelRef.current = false
                 return
               }
-              submit()
+              submitRootCreate()
             }}
             placeholder="models/staging/name.sql"
             spellCheck={false}
@@ -466,9 +776,18 @@ export default function FileExplorer() {
               node={node}
               depth={0}
               activeFile={activeFile}
+              renaming={renaming}
+              creatingInDir={creatingInDir}
+              alwaysShowActions={alwaysShowActions}
+              files={files}
               onOpen={openFile}
               onDelete={deleteFile}
               onCreateInDir={startCreateInDir}
+              onCommitCreate={commitCreateInDir}
+              onCancelCreate={() => setCreatingInDir(null)}
+              onStartRename={startRename}
+              onCommitRename={commitRename}
+              onCancelRename={() => setRenaming(null)}
             />
           ))
         )}

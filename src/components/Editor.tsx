@@ -17,7 +17,7 @@ export default function Editor() {
   const openFile = useGameStore((s) => s.openFile)
   const setFileContent = useGameStore((s) => s.setFileContent)
   const theme = useGameStore((s) => s.theme)
-  const currentLevelId = useGameStore((s) => s.currentLevelId)
+  const currentLevelId = useGameStore((s) => s.currentLessonId)
 
   const filePaths = Object.keys(files).sort()
 

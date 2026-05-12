@@ -1,17 +1,16 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import { parseCommand } from '../engine/commandParser'
 import { execute } from '../engine/runner'
 import { previewModel, plan, materializeModels } from '../engine/executor'
-import { collectSnapshots, runSnapshot } from '../engine/snapshots'
-import { getLastLevelId, getLevelById } from '../levels'
+import { getLessonById, getLastLessonId, taskKey, lessons } from '../lessons'
 import type { TerminalLine } from '../engine/runner'
 import { registerCsv, resetDb } from '../engine/duckdb'
 import { sourceViewName, getFileStem } from '../engine/compiler'
 import { errorMessage } from '../engine/errors'
 import { safeStorage } from './safeStorage'
+import { ALL_PANELS, type PanelKey } from '../engine/types'
 
-export type BottomTab = 'commands' | 'results' | 'lineage'
+export type BottomTab = 'commands' | 'results'
 
 export interface PreviewResult {
   name: string
@@ -22,7 +21,25 @@ export interface PreviewResult {
 
 export type { TerminalLine }
 
-let checkLevelTimer: ReturnType<typeof setTimeout> | null = null
+let checkTasksTimer: ReturnType<typeof setTimeout> | null = null
+
+const SEEN_PANELS_KEY = 'dbt-quest-seen-panels'
+
+function loadSeenPanels(): Set<PanelKey> {
+  const raw = safeStorage.getItem(SEEN_PANELS_KEY)
+  if (!raw) return new Set()
+  try {
+    const arr = JSON.parse(raw) as unknown
+    if (!Array.isArray(arr)) return new Set()
+    return new Set(arr.filter((v): v is PanelKey => ALL_PANELS.includes(v as PanelKey)))
+  } catch {
+    return new Set()
+  }
+}
+
+function persistSeenPanels(seen: Set<PanelKey>): void {
+  safeStorage.setItem(SEEN_PANELS_KEY, JSON.stringify([...seen]))
+}
 
 interface StoreState {
   files: Record<string, string>
@@ -35,312 +52,52 @@ interface StoreState {
   buildSucceeded: boolean
   snapshotRunCounts: Record<string, number>
   snapshotClosedRows: Record<string, number>
-  manuallyMarkedComplete: Set<number>
   terminalHistory: TerminalLine[]
   running: boolean
   lastPreview: PreviewResult | null
 
-  currentLevelId: number
-  completedLevels: Set<number>
-  /** Level ids whose quiz the learner answered correctly. Cleared on resetLevel. */
-  correctlyAnsweredQuizzes: Set<number>
-  dismissedIntros: Set<number>
-  hintRevealed: boolean
-  levelJustCompleted: boolean
-  showLevelComplete: boolean
-  showLevelIntro: boolean
-  showLevelQuiz: boolean
-  showCourseComplete: boolean
-  courseCompleteSeen: boolean
-  showWelcome: boolean
-  tourStep: number
-  showLanding: boolean
-
+  currentLessonId: number
+  /** Task progress, keyed as `<lessonId>.<taskId>`. */
+  completedTasks: Set<string>
+  /** Lesson ids whose quiz the learner answered correctly. */
+  correctQuizzes: Set<number>
+  /** Per-task hint reveal, keyed as `<lessonId>.<taskId>`. */
+  revealedHints: Set<string>
   bottomTab: BottomTab
-  bottomCollapsed: boolean
+
+  /** Panels the learner has ever encountered. Persisted across reloads. */
+  seenPanels: Set<PanelKey>
+  /** Panels revealed by the current lesson load — drives the "New" pulse. */
+  newlyRevealedPanels: Set<PanelKey>
 
   setFileContent: (path: string, content: string) => void
   openFile: (path: string) => void
   createFile: (path: string, content: string) => void
   deleteFile: (path: string) => void
+  renameFile: (oldPath: string, newPath: string) => boolean
   runCommand: (input: string) => Promise<void>
   showModel: (name: string) => Promise<void>
 
-  loadLevel: (id: number) => Promise<void>
-  resetLevel: () => Promise<void>
-  checkLevel: () => void
-  revealHint: () => void
-  markLessonComplete: () => void
-  markQuizCorrect: (levelId: number) => void
-  dismissLevelComplete: () => void
-  openLevelComplete: () => void
-  dismissLevelCompleteModal: () => void
-  dismissLevelIntro: () => void
-  dismissLevelQuiz: () => void
-  openLevelQuiz: () => void
-  openLevelIntro: () => void
-  dismissCourseComplete: () => void
-  dismissWelcome: () => void
-  replayWelcome: () => void
-  setTourStep: (step: number) => void
-  dismissLanding: () => void
-  openLanding: () => void
-
+  loadLesson: (id: number) => Promise<void>
+  checkTasks: () => void
+  revealHint: (lessonId: number, taskId: string) => void
+  markQuizCorrect: (lessonId: number) => void
   setBottomTab: (tab: BottomTab) => void
-  setBottomCollapsed: (collapsed: boolean) => void
+  dismissPanelReveal: (panel: PanelKey) => void
 
   theme: 'dark' | 'light'
   toggleTheme: () => void
-
-  resetAllProgress: () => Promise<void>
 }
 
-const PERSIST_KEY = 'dbt-quest-storage'
-
-/**
- * Translate a seed key like `raw.users` into the DuckDB table name used by
- * compiled source() calls. Bare names pass through unchanged.
- */
 function seedTableName(key: string): string {
   const [src, tbl] = key.split('.')
   return tbl ? sourceViewName(src, tbl) : src
 }
 
 export const useGameStore = create<StoreState>()(
-  persist(
     (set, get) => ({
-  files: {},
-  activeFile: null,
-  ranModels: new Set<string>(),
-  shownModels: new Set<string>(),
-  testResults: {},
-  modelColumns: {},
-  loadedSeeds: new Set<string>(),
-  buildSucceeded: false,
-  snapshotRunCounts: {},
-  snapshotClosedRows: {},
-  manuallyMarkedComplete: new Set<number>(),
-  terminalHistory: [{ text: 'dbt-quest — loading...', color: 'gray' }],
-  running: false,
-  lastPreview: null,
-
-  currentLevelId: 0,
-  completedLevels: new Set<number>(),
-  correctlyAnsweredQuizzes: new Set<number>(),
-  dismissedIntros: new Set<number>(),
-  hintRevealed: false,
-  levelJustCompleted: false,
-  showLevelComplete: false,
-  showLevelIntro: false,
-  showLevelQuiz: false,
-  showCourseComplete: false,
-  courseCompleteSeen: false,
-  // Open the onboarding tour on first load; dismissWelcome persists the flag in localStorage.
-  showWelcome: !safeStorage.getItem('dbt-quest-welcome-seen-narrative'),
-  tourStep: 0,
-  showLanding: true,
-
-  bottomTab: 'commands',
-  bottomCollapsed: false,
-
-  theme: (safeStorage.getItem('dbt-quest-theme') as 'dark' | 'light') ?? 'dark',
-
-  toggleTheme: () => {
-    const next = get().theme === 'dark' ? 'light' : 'dark'
-    document.documentElement.dataset.theme = next === 'light' ? 'light' : ''
-    safeStorage.setItem('dbt-quest-theme', next)
-    set({ theme: next })
-  },
-
-  setFileContent: (path, content) => {
-    set((s) => ({ files: { ...s.files, [path]: content } }))
-    if (checkLevelTimer) clearTimeout(checkLevelTimer)
-    checkLevelTimer = setTimeout(() => get().checkLevel(), 800)
-  },
-
-  openFile: (path) => set({ activeFile: path }),
-
-  createFile: (path, content) =>
-    set((s) => ({
-      files: { ...s.files, [path]: content },
-      activeFile: path,
-    })),
-
-  deleteFile: (path) =>
-    set((s) => {
-      const files = { ...s.files }
-      delete files[path]
-      const remaining = Object.keys(files)
-      const activeFile =
-        s.activeFile === path
-          ? remaining.length > 0
-            ? remaining[0]
-            : null
-          : s.activeFile
-      return { files, activeFile }
-    }),
-
-  runCommand: async (input: string) => {
-    if (get().running) return
-
-    const cmdLine: TerminalLine = { text: `type here > ${input}` }
-    const parsed = parseCommand(input)
-
-    if (!parsed.ok) {
-      set((s) => ({
-        terminalHistory: [
-          ...s.terminalHistory,
-          cmdLine,
-          { text: `Error: ${parsed.error}`, color: 'red' as const },
-          { text: '' },
-        ],
-      }))
-      return
-    }
-
-    set((s) => ({
-      running: true,
-      terminalHistory: [...s.terminalHistory, cmdLine],
-    }))
-
-    try {
-      const s = get()
-      const result = await execute(parsed.command, {
-        files: s.files,
-        ranModels: s.ranModels,
-        shownModels: s.shownModels,
-        testResults: s.testResults,
-        modelColumns: s.modelColumns,
-        loadedSeeds: s.loadedSeeds,
-        buildSucceeded: s.buildSucceeded,
-        snapshotRunCounts: s.snapshotRunCounts,
-        snapshotClosedRows: s.snapshotClosedRows,
-      })
-
-      set((current) => ({
-        terminalHistory: [...current.terminalHistory, ...result.lines],
-        ranModels: result.updatedState.ranModels ?? current.ranModels,
-        testResults: result.updatedState.testResults ?? current.testResults,
-        modelColumns: result.updatedState.modelColumns ?? current.modelColumns,
-        loadedSeeds: result.updatedState.loadedSeeds ?? current.loadedSeeds,
-        buildSucceeded: result.updatedState.buildSucceeded ?? current.buildSucceeded,
-        snapshotRunCounts: result.updatedState.snapshotRunCounts ?? current.snapshotRunCounts,
-        snapshotClosedRows: result.updatedState.snapshotClosedRows ?? current.snapshotClosedRows,
-      }))
-
-      // Mirror `dbt show --select <m>` results into the Results tab.
-      const showTerm = parsed.command.type === 'show' && parsed.command.select.length === 1
-        ? parsed.command.select[0].terms[0]
-        : null
-      const showTarget = showTerm?.method === 'fqn' ? showTerm.value : null
-      if (showTarget) {
-        const latestRan = result.updatedState.ranModels ?? get().ranModels
-        if (latestRan.has(showTarget)) {
-          const target = showTarget
-          try {
-            const res = await previewModel(target, 20)
-            set((cur) => ({
-              lastPreview: { name: target, columns: res.columns, rows: res.rows, rowCount: res.rowCount },
-              shownModels: new Set([...cur.shownModels, target]),
-              bottomTab: 'results',
-              bottomCollapsed: false,
-            }))
-          } catch {
-            /* ignore — terminal already shows the error */
-          }
-        }
-      }
-    } catch (e) {
-      set((current) => ({
-        terminalHistory: [
-          ...current.terminalHistory,
-          { text: `Unexpected error: ${errorMessage(e)}`, color: 'red' },
-          { text: '' },
-        ],
-      }))
-    } finally {
-      set({ running: false })
-      get().checkLevel()
-    }
-  },
-
-  showModel: async (name: string) => {
-    if (get().running) return
-    set((s) => ({
-      running: true,
-      bottomTab: 'results',
-      bottomCollapsed: false,
-      terminalHistory: [...s.terminalHistory, { text: `type here > dbt show --select ${name}` }],
-    }))
-    try {
-      if (!get().ranModels.has(name)) {
-        set((s) => ({
-          terminalHistory: [
-            ...s.terminalHistory,
-            { text: `Model "${name}" hasn't been run yet. Run 'dbt run' first.`, color: 'yellow' },
-            { text: '' },
-          ],
-        }))
-        return
-      }
-      const res = await previewModel(name, 20)
-      set((s) => ({
-        lastPreview: { name, columns: res.columns, rows: res.rows, rowCount: res.rowCount },
-        shownModels: new Set([...s.shownModels, name]),
-        terminalHistory: [
-          ...s.terminalHistory,
-          { text: `Preview of "${name}" — ${res.rowCount} row${res.rowCount !== 1 ? 's' : ''}. See the Results tab.`, color: 'gray' },
-          { text: '' },
-        ],
-      }))
-    } catch (e) {
-      set((s) => ({
-        terminalHistory: [
-          ...s.terminalHistory,
-          { text: errorMessage(e), color: 'red' },
-          { text: '' },
-        ],
-      }))
-    } finally {
-      set({ running: false })
-      get().checkLevel()
-    }
-  },
-
-  setBottomTab: (tab) => set({ bottomTab: tab, bottomCollapsed: false }),
-  setBottomCollapsed: (collapsed) => set({ bottomCollapsed: collapsed }),
-
-  resetLevel: async () => {
-    const id = get().currentLevelId
-    if (!id) return
-    // Clear this level's quiz answer so the learner can retake it.
-    set((s) => {
-      if (!s.correctlyAnsweredQuizzes.has(id)) return {}
-      const next = new Set(s.correctlyAnsweredQuizzes)
-      next.delete(id)
-      return { correctlyAnsweredQuizzes: next }
-    })
-    await get().loadLevel(id)
-  },
-
-  loadLevel: async (id: number) => {
-    const level = getLevelById(id)
-    if (!level) return
-
-    if (checkLevelTimer) {
-      clearTimeout(checkLevelTimer)
-      checkLevelTimer = null
-    }
-
-    // Show the intro modal until the player has dismissed it for this level.
-    // Persisting dismissedIntros means a reload before "Let's go" still shows
-    // the modal, but jumping back to a level you've already seen does not.
-    const showIntro = !get().dismissedIntros.has(id)
-
-    const firstFile = Object.keys(level.initialFiles)[0] ?? null
-    set({
-      files: { ...level.initialFiles },
-      activeFile: firstFile,
+      files: {},
+      activeFile: null,
       ranModels: new Set<string>(),
       shownModels: new Set<string>(),
       testResults: {},
@@ -349,253 +106,363 @@ export const useGameStore = create<StoreState>()(
       buildSucceeded: false,
       snapshotRunCounts: {},
       snapshotClosedRows: {},
-      currentLevelId: id,
-      hintRevealed: false,
-      levelJustCompleted: false,
-      showLevelIntro: showIntro,
+      terminalHistory: [{ text: 'dbt-quest — loading...', color: 'gray' }],
+      running: false,
       lastPreview: null,
-      running: true,
-      terminalHistory: [
-        { text: `Level ${id} — ${level.title}`, color: 'gray' },
-        { text: 'Preparing DuckDB…', color: 'gray' },
-      ],
-    })
 
-    try {
-      await resetDb()
-      const seeds = level.seeds ?? {}
-      for (const [key, csv] of Object.entries(seeds)) {
-        await registerCsv(seedTableName(key), csv)
-      }
-      // Silently register any seeds/*.csv files from initialFiles into DuckDB
-      // so downstream models work. `dbt seed` still needs to run to mark them
-      // as user-loaded for validation.
-      for (const [path, csv] of Object.entries(level.initialFiles)) {
-        if (path.startsWith('seeds/') && path.endsWith('.csv')) {
-          const name = getFileStem(path, '.csv')
-          await registerCsv(name, csv.trim())
+      currentLessonId: 0,
+      completedTasks: new Set<string>(),
+      correctQuizzes: new Set<number>(),
+      revealedHints: new Set<string>(),
+
+      bottomTab: 'commands',
+
+      seenPanels: loadSeenPanels(),
+      newlyRevealedPanels: new Set<PanelKey>(),
+
+      theme: (safeStorage.getItem('dbt-quest-theme') as 'dark' | 'light') ?? 'light',
+
+      toggleTheme: () => {
+        const next = get().theme === 'dark' ? 'light' : 'dark'
+        document.documentElement.dataset.theme = next === 'light' ? 'light' : ''
+        safeStorage.setItem('dbt-quest-theme', next)
+        set({ theme: next })
+      },
+
+      setFileContent: (path, content) => {
+        set((s) => ({ files: { ...s.files, [path]: content } }))
+        if (checkTasksTimer) clearTimeout(checkTasksTimer)
+        checkTasksTimer = setTimeout(() => get().checkTasks(), 600)
+      },
+
+      openFile: (path) => set({ activeFile: path }),
+
+      createFile: (path, content) =>
+        set((s) => ({
+          files: { ...s.files, [path]: content },
+          activeFile: path,
+        })),
+
+      deleteFile: (path) =>
+        set((s) => {
+          const files = { ...s.files }
+          delete files[path]
+          const remaining = Object.keys(files)
+          const activeFile =
+            s.activeFile === path
+              ? remaining.length > 0
+                ? remaining[0]
+                : null
+              : s.activeFile
+          return { files, activeFile }
+        }),
+
+      renameFile: (oldPath, newPath) => {
+        const trimmed = newPath.trim()
+        if (!trimmed || oldPath === trimmed) return false
+        const s = get()
+        if (!(oldPath in s.files)) return false
+        if (trimmed in s.files) return false
+        // Rebuild the object preserving insertion order — when we hit oldPath,
+        // emit the new key with the same content instead.
+        const files: Record<string, string> = {}
+        for (const [k, v] of Object.entries(s.files)) {
+          files[k === oldPath ? trimmed : k] = v
         }
-      }
-      const preRanSet = new Set<string>()
-      const preRanColumns: Record<string, string[]> = {}
-      if (level.preRanModels?.length) {
-        const execPlan = plan(level.initialFiles)
-        const toRun = execPlan.sorted.filter((m) => level.preRanModels!.includes(m.name))
-        const outcomes = await materializeModels(toRun)
-        for (const o of outcomes) {
-          if (o.passed) {
-            preRanSet.add(o.name)
-            preRanColumns[o.name] = o.columns
+        set({
+          files,
+          activeFile: s.activeFile === oldPath ? trimmed : s.activeFile,
+        })
+        get().checkTasks()
+        return true
+      },
+
+      runCommand: async (input: string) => {
+        if (get().running) return
+
+        const cmdLine: TerminalLine = { text: `type here > ${input}` }
+        const parsed = parseCommand(input)
+
+        if (!parsed.ok) {
+          set((s) => ({
+            terminalHistory: [
+              ...s.terminalHistory,
+              cmdLine,
+              { text: `Error: ${parsed.error}`, color: 'red' as const },
+              { text: '' },
+            ],
+          }))
+          return
+        }
+
+        set((s) => ({
+          running: true,
+          terminalHistory: [...s.terminalHistory, cmdLine],
+        }))
+
+        try {
+          const s = get()
+          const result = await execute(parsed.command, {
+            files: s.files,
+            ranModels: s.ranModels,
+            shownModels: s.shownModels,
+            testResults: s.testResults,
+            modelColumns: s.modelColumns,
+            loadedSeeds: s.loadedSeeds,
+            buildSucceeded: s.buildSucceeded,
+            snapshotRunCounts: s.snapshotRunCounts,
+            snapshotClosedRows: s.snapshotClosedRows,
+          })
+
+          set((current) => ({
+            terminalHistory: [...current.terminalHistory, ...result.lines],
+            ranModels: result.updatedState.ranModels ?? current.ranModels,
+            testResults: result.updatedState.testResults ?? current.testResults,
+            modelColumns: result.updatedState.modelColumns ?? current.modelColumns,
+            loadedSeeds: result.updatedState.loadedSeeds ?? current.loadedSeeds,
+            buildSucceeded: result.updatedState.buildSucceeded ?? current.buildSucceeded,
+            snapshotRunCounts: result.updatedState.snapshotRunCounts ?? current.snapshotRunCounts,
+            snapshotClosedRows: result.updatedState.snapshotClosedRows ?? current.snapshotClosedRows,
+          }))
+
+          const showTerm = parsed.command.type === 'show' && parsed.command.select.length === 1
+            ? parsed.command.select[0].terms[0]
+            : null
+          const showTarget = showTerm?.method === 'fqn' ? showTerm.value : null
+          if (showTarget) {
+            const latestRan = result.updatedState.ranModels ?? get().ranModels
+            if (latestRan.has(showTarget)) {
+              const target = showTarget
+              try {
+                const res = await previewModel(target, 20)
+                set((cur) => ({
+                  lastPreview: { name: target, columns: res.columns, rows: res.rows, rowCount: res.rowCount },
+                  shownModels: new Set([...cur.shownModels, target]),
+                  bottomTab: 'results',
+                }))
+              } catch {
+                /* ignore */
+              }
+            }
           }
-        }
-      }
-      const preRanSnapCounts: Record<string, number> = {}
-      if (level.preRanSnapshots?.length) {
-        const snaps = collectSnapshots(level.initialFiles)
-        for (const snap of snaps) {
-          if (!level.preRanSnapshots.includes(snap.name)) continue
-          const outcome = await runSnapshot(snap)
-          if (outcome.passed) preRanSnapCounts[snap.name] = 1
-        }
-      }
-      const seedNames = Object.keys(seeds)
-      set((s) => ({
-        terminalHistory: [
-          ...s.terminalHistory.slice(0, 1),
-          { text: level.goal.description, color: 'gray' },
-          { text: '' },
-          seedNames.length
-            ? { text: `Seeded: ${seedNames.join(', ')}`, color: 'gray' }
-            : { text: 'No seeds for this level.', color: 'gray' },
-          { text: `Try: dbt run${seedNames.length ? ' · dbt show --select <model>' : ''}`, color: 'gray' },
-          { text: '' },
-        ],
-        ...(preRanSet.size ? { ranModels: preRanSet, modelColumns: preRanColumns } : {}),
-        ...(Object.keys(preRanSnapCounts).length ? { snapshotRunCounts: preRanSnapCounts } : {}),
-      }))
-    } catch (e) {
-      set((s) => ({
-        terminalHistory: [
-          ...s.terminalHistory,
-          { text: `Failed to initialise DuckDB: ${errorMessage(e)}`, color: 'red' },
-          { text: '' },
-        ],
-      }))
-    } finally {
-      set({ running: false })
-    }
-  },
-
-  checkLevel: () => {
-    const s = get()
-    const level = getLevelById(s.currentLevelId)
-    if (!level) return
-    if (s.completedLevels.has(s.currentLevelId)) return
-
-    const result = level.validate({
-      files: s.files,
-      ranModels: s.ranModels,
-      shownModels: s.shownModels,
-      testResults: s.testResults,
-      modelColumns: s.modelColumns,
-      loadedSeeds: s.loadedSeeds,
-      buildSucceeded: s.buildSucceeded,
-      snapshotRunCounts: s.snapshotRunCounts,
-      snapshotClosedRows: s.snapshotClosedRows,
-      manuallyMarkedComplete: s.manuallyMarkedComplete,
-      correctlyAnsweredQuizzes: s.correctlyAnsweredQuizzes,
-      currentLevelId: s.currentLevelId,
-    })
-
-    if (result.passed) {
-      set((current) => ({
-        completedLevels: new Set([...current.completedLevels, current.currentLevelId]),
-        levelJustCompleted: true,
-        terminalHistory: [
-          ...current.terminalHistory,
-          { text: '' },
-          {
-            text: `✓ Level ${current.currentLevelId} complete! ${level.badge ? level.badge.emoji + ' ' + level.badge.name : ''}`,
-            color: 'green' as const,
-          },
-          { text: '' },
-        ],
-      }))
-    }
-  },
-
-  revealHint: () => set({ hintRevealed: true }),
-
-  markLessonComplete: () => {
-    const s = get()
-    if (!s.currentLevelId) return
-    if (s.manuallyMarkedComplete.has(s.currentLevelId)) return
-    set({
-      manuallyMarkedComplete: new Set([...s.manuallyMarkedComplete, s.currentLevelId]),
-    })
-    get().checkLevel()
-  },
-
-  markQuizCorrect: (levelId) => {
-    set((s) => ({
-      correctlyAnsweredQuizzes: new Set([...s.correctlyAnsweredQuizzes, levelId]),
-    }))
-    // For quiz-gated levels, the correct answer is what completes the level.
-    // For other levels, this is a no-op (level is already in completedLevels).
-    get().checkLevel()
-  },
-
-  dismissLevelComplete: () => set({ levelJustCompleted: false }),
-  openLevelComplete: () => set({ showLevelComplete: true }),
-
-  dismissLevelCompleteModal: () => {
-    const s = get()
-    const level = getLevelById(s.currentLevelId)
-    const hasQuiz = level?.quiz != null
-    // If the quiz was the gate (already answered correctly), don't show it again.
-    const alreadyAnswered = s.correctlyAnsweredQuizzes.has(s.currentLevelId)
-    const showQuiz = hasQuiz && !alreadyAnswered
-    const isLast = s.currentLevelId === getLastLevelId()
-    set({
-      showLevelComplete: false,
-      showLevelQuiz: showQuiz,
-      // Trigger course-complete directly when no follow-up quiz will fire.
-      showCourseComplete: !showQuiz && isLast && !s.courseCompleteSeen,
-    })
-  },
-
-  dismissLevelQuiz: () => {
-    const s = get()
-    const isLast = s.currentLevelId === getLastLevelId()
-    set({
-      showLevelQuiz: false,
-      showCourseComplete: isLast && !s.courseCompleteSeen,
-    })
-  },
-
-  openLevelQuiz: () => set({ showLevelQuiz: true }),
-
-  dismissCourseComplete: () =>
-    set({ showCourseComplete: false, courseCompleteSeen: true }),
-
-  dismissWelcome: () => {
-    safeStorage.setItem('dbt-quest-welcome-seen-narrative', '1')
-    set({ showWelcome: false, tourStep: 0 })
-  },
-
-  replayWelcome: () => set({ showWelcome: true, tourStep: 0 }),
-
-  setTourStep: (step) => set({ tourStep: step }),
-
-  dismissLanding: () => set({ showLanding: false }),
-  openLanding: () => set({ showLanding: true }),
-
-  dismissLevelIntro: () =>
-    set((s) => ({
-      showLevelIntro: false,
-      dismissedIntros: s.currentLevelId
-        ? new Set([...s.dismissedIntros, s.currentLevelId])
-        : s.dismissedIntros,
-    })),
-  openLevelIntro: () => set({ showLevelIntro: true }),
-
-  resetAllProgress: async () => {
-    set({
-      completedLevels: new Set<number>(),
-      correctlyAnsweredQuizzes: new Set<number>(),
-      manuallyMarkedComplete: new Set<number>(),
-      dismissedIntros: new Set<number>(),
-      currentLevelId: 0,
-      courseCompleteSeen: false,
-      showCourseComplete: false,
-      // Re-open the welcome modal so the reset feels like a fresh start.
-      // loadLevel(1) below will set showLevelIntro to true; the welcome modal
-      // sits on top (higher z-index) and the user gets welcome → L1 intro on dismiss.
-      showWelcome: true,
-    })
-    safeStorage.removeItem(PERSIST_KEY)
-    safeStorage.removeItem('dbt-quest-welcome-seen-narrative')
-    await get().loadLevel(1)
-  },
-    }),
-    {
-      name: PERSIST_KEY,
-      version: 1,
-      storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({
-        completedLevels: [...s.completedLevels],
-        correctlyAnsweredQuizzes: [...s.correctlyAnsweredQuizzes],
-        manuallyMarkedComplete: [...s.manuallyMarkedComplete],
-        dismissedIntros: [...s.dismissedIntros],
-        currentLevelId: s.currentLevelId,
-        courseCompleteSeen: s.courseCompleteSeen,
-      }),
-      merge: (persisted, current) => {
-        // Defensive hydration: localStorage can be edited by hand or corrupted
-        // by a botched migration. Reject anything that isn't the expected
-        // shape so a bad value doesn't crash the app or silently poison state.
-        const numberArray = (v: unknown): number[] =>
-          Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)) : []
-        const obj = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>
-
-        const completed = numberArray(obj.completedLevels)
-        const dismissed = Array.isArray(obj.dismissedIntros)
-          ? numberArray(obj.dismissedIntros)
-          : completed
-        const currentLevelId = typeof obj.currentLevelId === 'number' && Number.isFinite(obj.currentLevelId)
-          ? obj.currentLevelId
-          : 0
-
-        return {
-          ...current,
-          completedLevels: new Set(completed),
-          correctlyAnsweredQuizzes: new Set(numberArray(obj.correctlyAnsweredQuizzes)),
-          manuallyMarkedComplete: new Set(numberArray(obj.manuallyMarkedComplete)),
-          dismissedIntros: new Set(dismissed),
-          currentLevelId,
-          courseCompleteSeen: obj.courseCompleteSeen === true,
+        } catch (e) {
+          set((current) => ({
+            terminalHistory: [
+              ...current.terminalHistory,
+              { text: `Unexpected error: ${errorMessage(e)}`, color: 'red' },
+              { text: '' },
+            ],
+          }))
+        } finally {
+          set({ running: false })
+          get().checkTasks()
         }
       },
-    },
-  ),
+
+      showModel: async (name: string) => {
+        if (get().running) return
+        set((s) => ({
+          running: true,
+          bottomTab: 'results',
+          terminalHistory: [...s.terminalHistory, { text: `type here > dbt show --select ${name}` }],
+        }))
+        try {
+          if (!get().ranModels.has(name)) {
+            set((s) => ({
+              terminalHistory: [
+                ...s.terminalHistory,
+                { text: `Model "${name}" hasn't been run yet. Run 'dbt run' first.`, color: 'yellow' },
+                { text: '' },
+              ],
+            }))
+            return
+          }
+          const res = await previewModel(name, 20)
+          set((s) => ({
+            lastPreview: { name, columns: res.columns, rows: res.rows, rowCount: res.rowCount },
+            shownModels: new Set([...s.shownModels, name]),
+            terminalHistory: [
+              ...s.terminalHistory,
+              { text: `Preview of "${name}" — ${res.rowCount} row${res.rowCount !== 1 ? 's' : ''}. See the Results tab.`, color: 'gray' },
+              { text: '' },
+            ],
+          }))
+        } catch (e) {
+          set((s) => ({
+            terminalHistory: [
+              ...s.terminalHistory,
+              { text: errorMessage(e), color: 'red' },
+              { text: '' },
+            ],
+          }))
+        } finally {
+          set({ running: false })
+          get().checkTasks()
+        }
+      },
+
+      setBottomTab: (tab) => set({ bottomTab: tab }),
+
+      loadLesson: async (id: number) => {
+        const lesson = getLessonById(id)
+        if (!lesson) return
+
+        if (checkTasksTimer) {
+          clearTimeout(checkTasksTimer)
+          checkTasksTimer = null
+        }
+
+        const firstFile = Object.keys(lesson.initialFiles)[0] ?? null
+
+        // Required panels for this lesson. Omitted = "show everything" (later
+        // lessons don't need to opt in). Explicit `[]` is the minimum-UI case.
+        const requiredPanels: PanelKey[] =
+          lesson.panels ?? [...ALL_PANELS]
+        const prevSeen = get().seenPanels
+        const newlyRevealed = new Set<PanelKey>(
+          requiredPanels.filter((p) => !prevSeen.has(p)),
+        )
+        const nextSeen = new Set<PanelKey>([...prevSeen, ...requiredPanels])
+        if (newlyRevealed.size > 0) persistSeenPanels(nextSeen)
+
+        set({
+          files: { ...lesson.initialFiles },
+          activeFile: firstFile,
+          ranModels: new Set<string>(),
+          shownModels: new Set<string>(),
+          testResults: {},
+          modelColumns: {},
+          loadedSeeds: new Set<string>(),
+          buildSucceeded: false,
+          snapshotRunCounts: {},
+          snapshotClosedRows: {},
+          currentLessonId: id,
+          lastPreview: null,
+          running: true,
+          seenPanels: nextSeen,
+          newlyRevealedPanels: newlyRevealed,
+          terminalHistory: [
+            { text: `Lesson ${id} — ${lesson.title}`, color: 'gray' },
+            { text: 'Preparing DuckDB…', color: 'gray' },
+          ],
+        })
+
+        try {
+          await resetDb()
+          const seeds = lesson.seeds ?? {}
+          for (const [key, csv] of Object.entries(seeds)) {
+            await registerCsv(seedTableName(key), csv)
+          }
+          for (const [path, csv] of Object.entries(lesson.initialFiles)) {
+            if (path.startsWith('seeds/') && path.endsWith('.csv')) {
+              const name = getFileStem(path, '.csv')
+              await registerCsv(name, csv.trim())
+            }
+          }
+          const preRanSet = new Set<string>()
+          const preRanColumns: Record<string, string[]> = {}
+          if (lesson.preRanModels?.length) {
+            const execPlan = plan(lesson.initialFiles)
+            const toRun = execPlan.sorted.filter((m) => lesson.preRanModels!.includes(m.name))
+            const outcomes = await materializeModels(toRun)
+            for (const o of outcomes) {
+              if (o.passed) {
+                preRanSet.add(o.name)
+                preRanColumns[o.name] = o.columns
+              }
+            }
+          }
+          const seedNames = Object.keys(seeds)
+          set((s) => ({
+            terminalHistory: [
+              ...s.terminalHistory.slice(0, 1),
+              seedNames.length
+                ? { text: `Seeded: ${seedNames.join(', ')}`, color: 'gray' }
+                : { text: 'No seeds for this lesson.', color: 'gray' },
+              { text: `Try: dbt run${seedNames.length ? ' · dbt show --select <model>' : ''}`, color: 'gray' },
+              { text: '' },
+            ],
+            ...(preRanSet.size ? { ranModels: preRanSet, modelColumns: preRanColumns } : {}),
+          }))
+        } catch (e) {
+          set((s) => ({
+            terminalHistory: [
+              ...s.terminalHistory,
+              { text: `Failed to initialise DuckDB: ${errorMessage(e)}`, color: 'red' },
+              { text: '' },
+            ],
+          }))
+        } finally {
+          set({ running: false })
+        }
+      },
+
+      checkTasks: () => {
+        const s = get()
+        const lesson = getLessonById(s.currentLessonId)
+        if (!lesson) return
+
+        const state = {
+          files: s.files,
+          ranModels: s.ranModels,
+          shownModels: s.shownModels,
+          testResults: s.testResults,
+          modelColumns: s.modelColumns,
+          loadedSeeds: s.loadedSeeds,
+          buildSucceeded: s.buildSucceeded,
+          snapshotRunCounts: s.snapshotRunCounts,
+          snapshotClosedRows: s.snapshotClosedRows,
+        }
+
+        let changed = false
+        const next = new Set(s.completedTasks)
+        for (const task of lesson.tasks) {
+          const key = taskKey(s.currentLessonId, task.id)
+          if (next.has(key)) continue
+          if (task.validate(state)) {
+            next.add(key)
+            changed = true
+          }
+        }
+        if (changed) set({ completedTasks: next })
+      },
+
+      revealHint: (lessonId, taskId) =>
+        set((s) => ({
+          revealedHints: new Set([...s.revealedHints, taskKey(lessonId, taskId)]),
+        })),
+
+      markQuizCorrect: (lessonId) =>
+        set((s) => ({
+          correctQuizzes: new Set([...s.correctQuizzes, lessonId]),
+        })),
+
+      dismissPanelReveal: (panel) =>
+        set((s) => {
+          if (!s.newlyRevealedPanels.has(panel)) return s
+          const next = new Set(s.newlyRevealedPanels)
+          next.delete(panel)
+          return { newlyRevealedPanels: next }
+        }),
+    }),
 )
+
+/** True when the lesson has tasks and every one is complete. Informational
+ *  lessons (tasks.length === 0, e.g. the intro) never report as "completed"
+ *  — they don't count toward progress. */
+export function lessonCompleted(completedTasks: Set<string>, lessonId: number): boolean {
+  const lesson = getLessonById(lessonId)
+  if (!lesson || lesson.tasks.length === 0) return false
+  return lesson.tasks.every((t) => completedTasks.has(taskKey(lessonId, t.id)))
+}
+
+export function totalLessonsCompleted(completedTasks: Set<string>): number {
+  return lessons.filter((l) => lessonCompleted(completedTasks, l.id)).length
+}
+
+/** Lessons that count toward progress (i.e. have at least one task). */
+export function totalTrackedLessons(): number {
+  return lessons.filter((l) => l.tasks.length > 0).length
+}
+
+export { getLastLessonId }

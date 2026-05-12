@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { runQuery } from '../engine/duckdb'
 import { useGameStore } from '../store/gameStore'
+import PanelRevealBadge from './PanelRevealBadge'
 
 interface CatalogEntry {
   name: string
@@ -51,7 +52,7 @@ function SchemaIcon() {
 
 export default function DatabaseExplorer() {
   const running = useGameStore((s) => s.running)
-  const currentLevelId = useGameStore((s) => s.currentLevelId)
+  const currentLevelId = useGameStore((s) => s.currentLessonId)
   const [entries, setEntries] = useState<CatalogEntry[]>([])
   const [collapsed, setCollapsed] = useState(false)
   const [schemaExpanded, setSchemaExpanded] = useState(true)
@@ -111,6 +112,7 @@ export default function DatabaseExplorer() {
       >
         <ChevronIcon expanded={!collapsed} />
         <span
+          className="flex items-center"
           style={{
             color: 'var(--color-text-muted)',
             fontSize: '0.625rem',
@@ -120,6 +122,7 @@ export default function DatabaseExplorer() {
           }}
         >
           Database
+          <PanelRevealBadge panel="warehouse" />
         </span>
         {entries.length > 0 && (
           <span
