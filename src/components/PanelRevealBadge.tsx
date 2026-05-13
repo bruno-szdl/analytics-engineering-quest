@@ -22,11 +22,15 @@ export default function PanelRevealBadge({ panel }: { panel: PanelKey }) {
   if (!isNew) return null
 
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
       onClick={(e) => {
         e.stopPropagation()
         dismiss(panel)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); dismiss(panel) }
       }}
       aria-label={`New panel: ${panel}. Click to dismiss.`}
       style={{
@@ -34,7 +38,6 @@ export default function PanelRevealBadge({ panel }: { panel: PanelKey }) {
         padding: '1px 6px',
         background: 'var(--color-accent-orange)',
         color: 'var(--color-base)',
-        border: 'none',
         borderRadius: '999px',
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '0.5625rem',
@@ -45,6 +48,6 @@ export default function PanelRevealBadge({ panel }: { panel: PanelKey }) {
       }}
     >
       New
-    </button>
+    </span>
   )
 }

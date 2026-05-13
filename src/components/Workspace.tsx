@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../store/gameStore'
 import { getLessonById } from '../lessons'
 import { ALL_PANELS } from '../engine/types'
@@ -130,15 +131,7 @@ function ContextColumn({
       height: 0, // unused — lineage is always the flexing block when shown
       onResize: () => {},
       render: () => (
-        <div className="flex flex-col h-full min-h-0">
-          <BlockHeader>
-            Lineage
-            <PanelRevealBadge panel="lineage" />
-          </BlockHeader>
-          <div className="flex-1 overflow-hidden min-h-0">
-            <LineageDag />
-          </div>
-        </div>
+        <LineageBlock />
       ),
     })
   }
@@ -191,10 +184,21 @@ function BlockHeader({ children }: { children: React.ReactNode }) {
   )
 }
 
-function LineageDag() {
+function LineageBlock() {
+  const { t } = useTranslation()
   const currentLessonId = useGameStore((s) => s.currentLessonId)
   const lesson = getLessonById(currentLessonId)
-  return <DagPanel embedded orientation="vertical" goalShape={lesson?.goal?.dagShape} />
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <BlockHeader>
+        {t('workspace.lineage')}
+        <PanelRevealBadge panel="lineage" />
+      </BlockHeader>
+      <div className="flex-1 overflow-hidden min-h-0">
+        <DagPanel embedded orientation="vertical" goalShape={lesson?.goal?.dagShape} />
+      </div>
+    </div>
+  )
 }
 
 // ── work area ─────────────────────────────────────────────────────────────────
@@ -231,6 +235,11 @@ function WorkArea() {
 function Console() {
   const tab = useGameStore((s) => s.bottomTab)
   const setTab = useGameStore((s) => s.setBottomTab)
+  const { t } = useTranslation()
+  const tabs = [
+    { key: 'commands' as const, label: t('workspace.commands') },
+    { key: 'results' as const, label: t('workspace.results') },
+  ]
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div
@@ -242,16 +251,16 @@ function Console() {
           paddingLeft: '8px',
         }}
       >
-        {(['commands', 'results'] as const).map((t) => (
+        {tabs.map(({ key, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={key}
+            onClick={() => setTab(key)}
             className="flex items-center px-3 h-full"
             style={{
               background: 'transparent',
               border: 'none',
-              borderTop: tab === t ? '2px solid var(--color-accent-orange)' : '2px solid transparent',
-              color: tab === t ? 'var(--color-text)' : 'var(--color-text-muted)',
+              borderTop: tab === key ? '2px solid var(--color-accent-orange)' : '2px solid transparent',
+              color: tab === key ? 'var(--color-text)' : 'var(--color-text-muted)',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.6875rem',
               textTransform: 'uppercase' as const,
@@ -259,7 +268,7 @@ function Console() {
               cursor: 'pointer',
             }}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>

@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../store/gameStore'
 import { getLessonById, getLastLessonId, taskKey } from '../lessons'
+import { useLocalizedLesson } from '../i18n/useLocalizedLesson'
 
 export default function LessonPanel() {
   const currentLessonId = useGameStore((s) => s.currentLessonId)
@@ -11,8 +13,10 @@ export default function LessonPanel() {
   const markQuizCorrect = useGameStore((s) => s.markQuizCorrect)
   const loadLesson = useGameStore((s) => s.loadLesson)
 
-  const lesson = getLessonById(currentLessonId)
-  if (!lesson) return null
+  const { t } = useTranslation()
+  const rawLesson = getLessonById(currentLessonId)
+  const lesson = useLocalizedLesson(rawLesson ?? { id: 0, title: '', concept: '', initialFiles: {}, tasks: [] })
+  if (!rawLesson) return null
 
   const allTasksDone = lesson.tasks.every((t) =>
     completedTasks.has(taskKey(lesson.id, t.id)),
@@ -37,7 +41,7 @@ export default function LessonPanel() {
               letterSpacing: '0.08em',
             }}
           >
-            Lesson {lesson.id} / {getLastLessonId()}
+            {t('lessonPanel.badge', { current: lesson.id, total: getLastLessonId() })}
           </span>
         </div>
         <h2 style={{ margin: 0, color: 'var(--color-text)', fontSize: '0.95rem', fontFamily: 'IBM Plex Sans, sans-serif', fontWeight: 700, lineHeight: 1.3 }}>
@@ -56,7 +60,7 @@ export default function LessonPanel() {
         {/* Tasks */}
         {lesson.tasks.length > 0 && (
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <SectionLabel>Tasks</SectionLabel>
+          <SectionLabel>{t('lessonPanel.tasks')}</SectionLabel>
           <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {lesson.tasks.map((task, i) => {
               const key = taskKey(lesson.id, task.id)
@@ -116,7 +120,7 @@ export default function LessonPanel() {
                               e.currentTarget.style.color = 'var(--color-text-muted)'
                             }}
                           >
-                            Show hint
+                            {t('lessonPanel.showHint')}
                           </button>
                         )}
                       </div>
@@ -132,7 +136,7 @@ export default function LessonPanel() {
         {/* Further reading */}
         {lesson.furtherReading && lesson.furtherReading.length > 0 && (
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
-            <SectionLabel>Further reading</SectionLabel>
+            <SectionLabel>{t('lessonPanel.furtherReading')}</SectionLabel>
             <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {lesson.furtherReading.map((link) => (
                 <li key={link.url}>
@@ -169,7 +173,7 @@ export default function LessonPanel() {
         {/* Quiz */}
         {lesson.quiz && allTasksDone && (
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
-            <SectionLabel>Check your understanding</SectionLabel>
+            <SectionLabel>{t('lessonPanel.quiz')}</SectionLabel>
             <QuizBlock
               key={lesson.id}
               question={lesson.quiz.question}
@@ -196,7 +200,7 @@ export default function LessonPanel() {
                 fontFamily: 'IBM Plex Sans, sans-serif',
                 textAlign: 'center' as const,
               }}>
-                You've finished the course. Go build something with dbt.
+                {t('lessonPanel.courseComplete')}
               </div>
             ) : (
               <button
@@ -216,7 +220,7 @@ export default function LessonPanel() {
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
               >
-                Next lesson →
+                {t('lessonPanel.nextLesson')}
               </button>
             )}
           </div>

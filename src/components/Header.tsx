@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useGameStore, lessonCompleted } from '../store/gameStore'
 import { lessons, getLessonById } from '../lessons'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function Header() {
   const isMobile = useIsMobile()
+  const { t } = useTranslation()
   return (
     <header
       className="flex items-center justify-between shrink-0"
@@ -26,7 +28,7 @@ export default function Header() {
                 <span className="font-semibold tracking-tight" style={{ fontFamily: 'IBM Plex Sans, sans-serif', color: 'var(--color-text)', fontSize: '0.9375rem' }}>quest</span>
               </div>
               <span style={{ fontFamily: 'IBM Plex Sans, sans-serif', color: 'var(--color-muted)', fontSize: '0.625rem', lineHeight: 1 }}>
-                Learn dbt in your browser
+                {t('header.tagline')}
               </span>
             </div>
             <div className="w-px h-4 ml-1" style={{ background: 'var(--color-border)' }} />
@@ -38,16 +40,17 @@ export default function Header() {
       <div className="flex items-center gap-2 shrink-0">
         <ExternalIconLink
           href="https://github.com/bruno-szdl/dbt-quest"
-          label="View source on GitHub"
+          label={t('header.githubLabel')}
         >
           <GitHubIcon />
         </ExternalIconLink>
         <ExternalIconLink
           href="https://www.linkedin.com/in/brunoszdl"
-          label="Author on LinkedIn"
+          label={t('header.linkedinLabel')}
         >
           <LinkedInIcon />
         </ExternalIconLink>
+        <LangToggleButton />
         <ThemeToggleButton />
       </div>
     </header>
@@ -108,6 +111,7 @@ function LessonSelector({ compact = false }: { compact?: boolean }) {
   const completedTasks = useGameStore((s) => s.completedTasks)
   const loadLesson = useGameStore((s) => s.loadLesson)
   const lesson = getLessonById(currentLessonId)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!open) return
@@ -136,7 +140,7 @@ function LessonSelector({ compact = false }: { compact?: boolean }) {
         onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(128,128,128,0.08)' }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
       >
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', fontFamily: 'IBM Plex Sans, sans-serif' }}>Lesson</span>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', fontFamily: 'IBM Plex Sans, sans-serif' }}>{t('header.lesson')}</span>
         <span
           className="font-semibold px-2.5 py-0.5 rounded"
           style={{
@@ -271,7 +275,48 @@ function DbtLogo() {
   )
 }
 
+function LangToggleButton() {
+  const { i18n } = useTranslation()
+  const current = i18n.language === 'pt' ? 'pt' : 'en'
+
+  const toggle = () => {
+    const next = current === 'en' ? 'pt' : 'en'
+    void i18n.changeLanguage(next)
+    localStorage.setItem('dbt-quest-lang', next)
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      title="Change language"
+      className="flex items-center justify-center rounded"
+      style={{
+        height: '28px',
+        padding: '0 7px',
+        background: 'transparent',
+        border: '1px solid var(--color-border)',
+        color: 'var(--color-text-muted)',
+        cursor: 'pointer',
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.625rem',
+        letterSpacing: '0.05em',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--color-muted)'
+        e.currentTarget.style.color = 'var(--color-text)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--color-border)'
+        e.currentTarget.style.color = 'var(--color-text-muted)'
+      }}
+    >
+      {current.toUpperCase()}
+    </button>
+  )
+}
+
 function ThemeToggleButton() {
+  const { t } = useTranslation()
   const theme = useGameStore((s) => s.theme)
   const toggleTheme = useGameStore((s) => s.toggleTheme)
   const isDark = theme === 'dark'
@@ -279,7 +324,7 @@ function ThemeToggleButton() {
   return (
     <button
       onClick={toggleTheme}
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? t('header.lightMode') : t('header.darkMode')}
       className="flex items-center justify-center rounded"
       style={{
         width: '28px',

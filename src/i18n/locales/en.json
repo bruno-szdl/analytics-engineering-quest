@@ -1,0 +1,24 @@
+{
+  "header": {
+    "tagline": "Learn dbt in your browser",
+    "lesson": "Lesson",
+    "githubLabel": "View source on GitHub",
+    "linkedinLabel": "Author on LinkedIn",
+    "lightMode": "Switch to light mode",
+    "darkMode": "Switch to dark mode"
+  },
+  "lessonPanel": {
+    "badge": "Lesson {{current}} / {{total}}",
+    "tasks": "Tasks",
+    "showHint": "Show hint",
+    "furtherReading": "Further reading",
+    "quiz": "Check your understanding",
+    "nextLesson": "Next lesson →",
+    "courseComplete": "You've finished the course. Go build something with dbt."
+  },
+  "workspace": {
+    "lineage": "Lineage",
+    "commands": "Commands",
+    "results": "Results"
+  }
+}

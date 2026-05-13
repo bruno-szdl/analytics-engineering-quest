@@ -1,4 +1,6 @@
 import MonacoEditor from '@monaco-editor/react'
+import type { Monaco } from '@monaco-editor/react'
+import type { editor as MonacoEditorNS, languages, IDisposable } from 'monaco-editor'
 import { useGameStore } from '../store/gameStore'
 
 function detectLanguage(path: string): string {
@@ -11,19 +13,69 @@ function basename(path: string): string {
   return path.split('/').pop() ?? path
 }
 
+let sqlCompletionProvider: IDisposable | null = null
+
+function registerSqlCompletions(monaco: Monaco): void {
+  if (sqlCompletionProvider) return
+  sqlCompletionProvider = monaco.languages.registerCompletionItemProvider('sql', {
+    triggerCharacters: ["'", '"', '(', '.'],
+    provideCompletionItems: (
+      model: MonacoEditorNS.ITextModel,
+      position: { lineNumber: number; column: number },
+    ): languages.CompletionList => {
+      const word = model.getWordUntilPosition(position)
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      }
+      const state = useGameStore.getState()
+      const tables = new Set<string>([
+        ...Object.keys(state.modelColumns),
+        ...state.loadedSeeds,
+        ...state.ranModels,
+      ])
+      const columns = new Set<string>()
+      for (const cols of Object.values(state.modelColumns)) {
+        for (const c of cols) columns.add(c)
+      }
+      const suggestions: languages.CompletionItem[] = []
+      for (const t of tables) {
+        suggestions.push({
+          label: t,
+          kind: monaco.languages.CompletionItemKind.Class,
+          insertText: t,
+          range,
+          detail: 'model / seed',
+        })
+      }
+      for (const c of columns) {
+        suggestions.push({
+          label: c,
+          kind: monaco.languages.CompletionItemKind.Field,
+          insertText: c,
+          range,
+          detail: 'column',
+        })
+      }
+      return { suggestions }
+    },
+  })
+}
+
 export default function Editor() {
   const files = useGameStore((s) => s.files)
   const activeFile = useGameStore((s) => s.activeFile)
   const openFile = useGameStore((s) => s.openFile)
   const setFileContent = useGameStore((s) => s.setFileContent)
   const theme = useGameStore((s) => s.theme)
-  const currentLevelId = useGameStore((s) => s.currentLessonId)
+  const currentLessonId = useGameStore((s) => s.currentLessonId)
 
   const filePaths = Object.keys(files).sort()
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-base)' }}>
-      {/* Panel header + tabs */}
       <div
         className="flex items-end shrink-0 overflow-x-auto"
         style={{ background: 'var(--color-surface)', minHeight: '36px', borderBottom: '1px solid var(--color-border)' }}
@@ -71,7 +123,6 @@ export default function Editor() {
         </div>
       </div>
 
-      {/* Editor body */}
       <div className="flex-1 overflow-hidden">
         {activeFile === null ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 opacity-30 select-none">
@@ -90,13 +141,16 @@ export default function Editor() {
           </div>
         ) : (
           <MonacoEditor
-            key={`${currentLevelId}-${activeFile}`}
+            key={`${currentLessonId}-${activeFile}`}
             height="100%"
             language={detectLanguage(activeFile)}
             theme={theme === 'dark' ? 'vs-dark' : 'light'}
             defaultValue={files[activeFile] ?? ''}
             onChange={(val) => setFileContent(activeFile, val ?? '')}
-            onMount={(editor) => editor.focus()}
+            onMount={(editor, monaco) => {
+              registerSqlCompletions(monaco)
+              editor.focus()
+            }}
             options={{
               minimap: { enabled: false },
               fontSize: 14,
@@ -107,6 +161,9 @@ export default function Editor() {
               padding: { top: 8 },
               acceptSuggestionOnCommitCharacter: false,
               wordBasedSuggestions: 'off',
+              quickSuggestions: false,
+              suggestOnTriggerCharacters: true,
+              editContext: false,
             }}
           />
         )}
@@ -118,7 +175,7 @@ export default function Editor() {
 function EditorIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" style={{ color: 'var(--color-muted)' }}>
-      <path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75V1.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z" />
+      <path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 1-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75V1.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z" />
     </svg>
   )
 }

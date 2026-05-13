@@ -140,6 +140,7 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
           spellCheck={false}
           autoComplete="off"
           autoCapitalize="off"
+          autoCorrect="off"
           aria-label="dbt-quest terminal input"
           style={{
             flex: 1,
