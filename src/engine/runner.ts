@@ -1,7 +1,7 @@
 import type { ParsedCommand, SelectorGroup, SelectorTerm } from './commandParser'
 import { parseCommand } from './commandParser'
 import { materializeModels, plan, previewModel, type ModelOutcome } from './executor'
-import { parseTests, runTests, type TestOutcome } from './tests'
+import { parseTests, runTests, type TestDef, type TestOutcome } from './tests'
 import { type CompiledModel, collectModels, getFileStem } from './compiler'
 import { buildDag } from './dagBuilder'
 import { registerCsv } from './duckdb'
@@ -424,11 +424,121 @@ export async function execute(
     return { lines, updatedState: { lastRun } }
   }
 
-  const wantRun = command.type === 'run' || command.type === 'build'
-  const wantTest = command.type === 'test' || command.type === 'build'
+  const wantRun = command.type === 'run'
   let runFailed = false
 
-  if (wantRun) {
+  if (command.type === 'build') {
+    // For dbt build, interleave model execution and test execution in DAG order:
+    // run model1 → test model1 → run model2 → test model2 → ...
+    const srcCount = countUniqueSources(selected)
+    lines.push({
+      text: `Found ${selected.length} model${selected.length !== 1 ? 's' : ''}, ${srcCount} source${srcCount !== 1 ? 's' : ''}`,
+      color: 'gray',
+    })
+    lines.push({ text: '' })
+
+    if (selected.length === 0) {
+      lines.push({ text: 'Nothing selected.', color: 'yellow' })
+      lines.push({ text: '' })
+    } else {
+      if (selected.some((m) => m.materialization === 'incremental')) {
+        lines.push({
+          text: '(dbt-quest simulates incremental models as full rebuilds.)',
+          color: 'gray',
+        })
+      }
+
+      const modelNames = new Set(selected.map((m) => m.name))
+      const tests = parseTests(state.files, modelNames)
+      const testsByModel = new Map<string, TestDef[]>()
+      for (const test of tests) {
+        if (!testsByModel.has(test.model)) testsByModel.set(test.model, [])
+        testsByModel.get(test.model)!.push(test)
+      }
+
+      let totalModelTime = 0
+      let totalModels = 0
+      let totalTests = 0
+      let passedTests = 0
+
+      for (const model of selected) {
+        // Run the model
+        const modelOutcome = await materializeModels([model])
+        const modelResult = modelOutcome[0]
+        totalModels++
+
+        lines.push(formatModelLine(totalModels, selected.length, modelResult))
+
+        if (modelResult.passed && modelResult.materialization === 'incremental' && modelResult.incrementalAppendedRows !== undefined) {
+          const n = modelResult.incrementalAppendedRows
+          lines.push({
+            text: `  → incremental filter would append ${n} new row${n === 1 ? '' : 's'} (full rebuild applied).`,
+            color: 'gray',
+          })
+        }
+        if (modelResult.passed && modelResult.inlinedEphemerals && modelResult.inlinedEphemerals.length) {
+          const list = modelResult.inlinedEphemerals.map((n) => `"${n}"`).join(', ')
+          const word = modelResult.inlinedEphemerals.length === 1 ? 'ephemeral' : 'ephemerals'
+          lines.push({
+            text: `  → inlined ${word} ${list} as CTE${modelResult.inlinedEphemerals.length === 1 ? '' : 's'} in the compiled SQL.`,
+            color: 'gray',
+          })
+        }
+
+        if (modelResult.passed && !modelResult.skipped) {
+          newRan.add(modelResult.name)
+          newColumns[modelResult.name] = modelResult.columns
+        } else if (!modelResult.passed) {
+          lines.push({ text: '', })
+          lines.push({ text: `  Compiled SQL:`, color: 'gray' })
+          for (const s of modelResult.compiledSql.split('\n')) lines.push({ text: `    ${s}`, color: 'gray' })
+          lines.push({ text: `  Error: ${modelResult.error}`, color: 'red' })
+          runFailed = true
+          break
+        }
+
+        totalModelTime += modelResult.elapsed
+
+        // Run tests for this model
+        const modelTests = testsByModel.get(model.name) ?? []
+        if (modelTests.length > 0) {
+          const testOutcomes = await runTests(modelTests)
+          testOutcomes.forEach((t, i) => {
+            lines.push(formatTestLine(i, modelTests.length, t))
+            if (t.error) lines.push({ text: `  Error: ${t.error}`, color: 'red' })
+          })
+
+          for (const t of testOutcomes) {
+            totalTests++
+            if (t.passed) passedTests++
+            const prev = newTestResults[t.model]
+            if (prev === 'fail') continue
+            newTestResults[t.model] = t.passed ? 'pass' : 'fail'
+          }
+        }
+      }
+
+      lines.push({ text: '' })
+      if (runFailed) {
+        lines.push({
+          text: `Stopped. Model ${totalModels} failed.`,
+          color: 'red',
+        })
+      } else {
+        lines.push({
+          text: `Finished running ${totalModels} model${totalModels !== 1 ? 's' : ''} in ${totalModelTime.toFixed(2)}s and ${totalTests} test${totalTests !== 1 ? 's' : ''}.`,
+          color: 'gray',
+        })
+        const failedTests = totalTests - passedTests
+        lines.push({
+          text: failedTests === 0 ? 'Completed successfully.' : `Done. PASS=${passedTests} FAIL=${failedTests}`,
+          color: failedTests === 0 ? 'green' : 'red',
+        })
+      }
+      lines.push({ text: '' })
+    }
+  } else if (wantRun) {
+    // Separate path for dbt run (without tests)
     const srcCount = countUniqueSources(selected)
     lines.push({
       text: `Found ${selected.length} model${selected.length !== 1 ? 's' : ''}, ${srcCount} source${srcCount !== 1 ? 's' : ''}`,
@@ -497,7 +607,8 @@ export async function execute(
     }
   }
 
-  if (wantTest) {
+  if (command.type === 'test') {
+    // Separate path for dbt test (without models)
     const modelNames = new Set(selected.map((m) => m.name))
     const tests = parseTests(state.files, modelNames)
     lines.push({
