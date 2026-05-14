@@ -19,12 +19,12 @@ import {
 
 const lesson07: Lesson = {
   id: 7,
-  title: 'Generic tests: not_null & unique',
-  concept: `dbt has two built-in tests for almost every column you'll write: **not_null** and **unique**. They're declared in a YAML file alongside your model and run with \`dbt test\`.
+  title: 'Data tests: not_null & unique',
+  concept: `dbt has two built-in **data tests** for almost every column you'll write: **not_null** and **unique**. They're declared in a YAML file alongside your model and run with \`dbt test\`.
 
 Catching a null or duplicate early (before it breaks a downstream join or doubles up a metric) is the cheapest data-quality win you'll ever get.
 
-Tests live in a \`schema.yml\` file next to your models. The structure looks like this:
+Data tests live in a \`schema.yml\` file next to your models. The structure looks like this:
 
 \`\`\`yaml
 version: 2
@@ -33,21 +33,21 @@ models:
   - name: stg_customers
     columns:
       - name: id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: email
-        tests:
+        data_tests:
           - not_null
 \`\`\`
 
 A few things to notice:
 
 - Each test name goes on its own line, prefixed with \`- \` (dash + space).
-- Indentation matters in YAML — \`tests:\` must align under its column, and the test entries must indent further.
-- You can put as many tests as you want on a column, and as many columns as you want under a model.
+- Indentation matters in YAML — \`data_tests:\` must align under its column, and the test entries must indent further.
+- You can put as many data tests as you want on a column, and as many columns as you want under a model.
 
-We've added an empty \`schema.yml\` to the project, with \`stg_customers.id\` set up but its \`tests:\` list empty. Your job: add \`not_null\` and \`unique\` to it, then add a separate \`email\` column with \`not_null\`, then run \`dbt test\`.`,
+We've added an empty \`schema.yml\` to the project, with \`stg_customers.id\` set up but its \`data_tests:\` list empty. Your job: add \`not_null\` and \`unique\` to it, then add a separate \`email\` column with \`not_null\`, then run \`dbt test\`.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
@@ -63,10 +63,11 @@ models:
   - name: stg_customers
     columns:
       - name: id
-        tests:
-          # add the two tests below this line (one per line, prefixed with "- ")
+        data_tests:
+          # add the two data tests below this line (one per line, prefixed with "- ")
 `,
   },
+  openFiles: ['models/schema.yml'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
@@ -84,7 +85,7 @@ models:
     {
       id: 'not-null',
       prompt: 'In `schema.yml`, add a `not_null` test under the `id` column of `stg_customers`.',
-      hint: "On a new line under `tests:`, write `          - not_null` (10 leading spaces, dash, space, then `not_null`).",
+      hint: "On a new line under `data_tests:`, write `          - not_null` (10 leading spaces, dash, space, then `not_null`).",
       validate: (s) => testDefinitionsInclude(s, 'stg_customers', ['not_null']),
     },
     {
@@ -102,9 +103,9 @@ models:
     {
       id: 'email-not-null',
       prompt: 'Add a new column block for `email` under the `stg_customers` model and give it a `not_null` test. Then run `dbt test` again.',
-      hint: "Add this under the existing `id` block (same indentation as `- name: id`):\n```\n      - name: email\n        tests:\n          - not_null\n```",
+      hint: "Add this under the existing `id` block (same indentation as `- name: id`):\n```\n      - name: email\n        data_tests:\n          - not_null\n```",
       validate: (s) =>
-        fileMatches(s, 'models/schema.yml', /- name:\s*email[\s\S]*?tests:\s*[\s\S]*?-\s*not_null/) &&
+        fileMatches(s, 'models/schema.yml', /- name:\s*email[\s\S]*?data_tests:\s*[\s\S]*?-\s*not_null/) &&
         allTestsPass(s, 'stg_customers'),
     },
   ],

@@ -18,7 +18,7 @@ import {
 const lesson05: Lesson = {
   id: 5,
   title: 'Sources',
-  concept: `So far our staging models read directly from tables like \`raw_customers\` and \`raw_orders\`. That works, but it has problems: nothing tells dbt where those tables came from, the DAG doesn't show the real upstream system, and there's no place to attach tests or freshness checks on the raw side.
+  concept: `So far our staging models read directly from tables like \`raw.customers\` and \`raw.orders\` — hardcoded schema-qualified names. That works, but it has problems: nothing tells dbt where those tables came from, the DAG doesn't show the real upstream system, and there's no place to attach tests or freshness checks on the raw side.
 
 The fix: declare **sources** in a \`.yml\` file, then read them with \`{{ source('schema', 'table') }}\` in your models.
 
@@ -26,7 +26,6 @@ The YAML format looks like this:
 
 \`\`\`yaml
 version: 2
-
 sources:
   - name: raw           # the schema / logical group
     tables:
@@ -49,11 +48,8 @@ sources:
     'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
   },
-  // Register raw data under BOTH the hardcoded name and the source-compiled name
-  // so the project keeps working while the learner refactors.
+  openFiles: ['models/sources.yml', 'models/stg_customers.sql', 'models/stg_orders.sql'],
   seeds: {
-    raw_customers: RAW_CUSTOMERS_CSV,
-    raw_orders: RAW_ORDERS_CSV,
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
   },
@@ -72,19 +68,19 @@ sources:
     },
     {
       id: 'use-source-customers',
-      prompt: "Refactor `stg_customers.sql` so its FROM clause uses `{{ source('raw', 'customers') }}` instead of `raw_customers`.",
-      hint: "Change `from raw_customers` to `from {{ source('raw', 'customers') }}`.",
+      prompt: "Refactor `stg_customers.sql` so its FROM clause uses `{{ source('raw', 'customers') }}` instead of the hardcoded `raw.customers`.",
+      hint: "Change `from raw.customers` to `from {{ source('raw', 'customers') }}`.",
       validate: (s) =>
         lineageHasSourceEdge(s, 'raw', 'customers', 'stg_customers') &&
-        !fileMatches(s, 'models/stg_customers.sql', /\braw_customers\b/),
+        !fileMatches(s, 'models/stg_customers.sql', /\braw\.customers\b/),
     },
     {
       id: 'use-source-orders',
       prompt: "Refactor `stg_orders.sql` the same way, using `{{ source('raw', 'orders') }}`.",
-      hint: "Change `from raw_orders` to `from {{ source('raw', 'orders') }}`.",
+      hint: "Change `from raw.orders` to `from {{ source('raw', 'orders') }}`.",
       validate: (s) =>
         lineageHasSourceEdge(s, 'raw', 'orders', 'stg_orders') &&
-        !fileMatches(s, 'models/stg_orders.sql', /\braw_orders\b/),
+        !fileMatches(s, 'models/stg_orders.sql', /\braw\.orders\b/),
     },
     {
       id: 'run',

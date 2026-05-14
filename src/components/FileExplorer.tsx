@@ -648,7 +648,7 @@ export default function FileExplorer() {
 
   return (
     <div
-      className="flex flex-col shrink-0 overflow-hidden"
+      className="flex flex-col h-full overflow-hidden"
       style={{ width: '100%', background: 'var(--color-base)' }}
     >
       {/* Header */}

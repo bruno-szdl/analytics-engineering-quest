@@ -4,8 +4,15 @@ import { useGameStore } from '../store/gameStore'
 import PanelRevealBadge from './PanelRevealBadge'
 
 interface CatalogEntry {
+  schema: string
   name: string
   type: 'BASE TABLE' | 'VIEW'
+}
+
+interface SchemaGroup {
+  schema: string
+  tables: CatalogEntry[]
+  views: CatalogEntry[]
 }
 
 function TableIcon() {
@@ -50,38 +57,115 @@ function SchemaIcon() {
   )
 }
 
+function SchemaSection({ group }: { group: SchemaGroup }) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <div style={{ paddingLeft: '12px' }}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          padding: '2px 4px',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          width: '100%',
+        }}
+      >
+        <ChevronIcon expanded={expanded} />
+        <SchemaIcon />
+        <span
+          style={{
+            color: 'var(--color-text-muted)',
+            fontSize: '0.6875rem',
+            fontFamily: 'JetBrains Mono, monospace',
+          }}
+        >
+          {group.schema}
+        </span>
+      </button>
+
+      {expanded && (
+        <div style={{ paddingLeft: '14px' }}>
+          {group.tables.map((t) => (
+            <CatalogRow key={t.name} entry={t} />
+          ))}
+          {group.views.map((v) => (
+            <CatalogRow key={v.name} entry={v} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CatalogRow({ entry }: { entry: CatalogEntry }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '2px 4px',
+        borderRadius: '3px',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+    >
+      {entry.type === 'BASE TABLE' ? <TableIcon /> : <ViewIcon />}
+      <span
+        style={{
+          color: 'var(--color-text-secondary)',
+          fontSize: '0.6875rem',
+          fontFamily: 'JetBrains Mono, monospace',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+        title={entry.name}
+      >
+        {entry.name}
+      </span>
+    </div>
+  )
+}
+
 export default function DatabaseExplorer() {
   const running = useGameStore((s) => s.running)
   const currentLevelId = useGameStore((s) => s.currentLessonId)
-  const [entries, setEntries] = useState<CatalogEntry[]>([])
+  const [groups, setGroups] = useState<SchemaGroup[]>([])
   const [collapsed, setCollapsed] = useState(false)
-  const [schemaExpanded, setSchemaExpanded] = useState(true)
 
   useEffect(() => {
     if (running) return
     async function refresh() {
       try {
         const result = await runQuery(
-          `SELECT table_name, table_type
+          `SELECT table_schema, table_name, table_type
            FROM information_schema.tables
-           WHERE table_schema = 'main'
-           ORDER BY table_type DESC, table_name`,
+           WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+           ORDER BY table_schema = 'main' DESC, table_schema, table_type DESC, table_name`,
         )
-        setEntries(
-          result.rows.map(([name, type]) => ({
-            name: name as string,
-            type: type as 'BASE TABLE' | 'VIEW',
-          })),
-        )
+        const map = new Map<string, SchemaGroup>()
+        for (const [schema, name, type] of result.rows) {
+          const s = schema as string
+          if (!map.has(s)) map.set(s, { schema: s, tables: [], views: [] })
+          const g = map.get(s)!
+          const entry: CatalogEntry = { schema: s, name: name as string, type: type as 'BASE TABLE' | 'VIEW' }
+          if (entry.type === 'BASE TABLE') g.tables.push(entry)
+          else g.views.push(entry)
+        }
+        setGroups([...map.values()])
       } catch {
-        setEntries([])
+        setGroups([])
       }
     }
     refresh()
   }, [running, currentLevelId])
 
-  const tables = entries.filter((e) => e.type === 'BASE TABLE')
-  const views = entries.filter((e) => e.type === 'VIEW')
+  const totalEntries = groups.reduce((n, g) => n + g.tables.length + g.views.length, 0)
 
   return (
     <div
@@ -124,7 +208,7 @@ export default function DatabaseExplorer() {
           Database
           <PanelRevealBadge panel="warehouse" />
         </span>
-        {entries.length > 0 && (
+        {totalEntries > 0 && (
           <span
             style={{
               marginLeft: 'auto',
@@ -133,7 +217,7 @@ export default function DatabaseExplorer() {
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {entries.length}
+            {totalEntries}
           </span>
         )}
       </button>
@@ -141,7 +225,7 @@ export default function DatabaseExplorer() {
       {/* Scrollable content */}
       {!collapsed && (
         <div style={{ overflowY: 'auto', flex: 1, paddingBottom: '6px' }}>
-          {entries.length === 0 ? (
+          {totalEntries === 0 ? (
             <div
               style={{
                 padding: '4px 16px 8px',
@@ -154,107 +238,7 @@ export default function DatabaseExplorer() {
               No tables yet
             </div>
           ) : (
-            <>
-              {/* memory database > main schema */}
-              <div style={{ paddingLeft: '12px' }}>
-                <button
-                  onClick={() => setSchemaExpanded((e) => !e)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '2px 4px',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    width: '100%',
-                  }}
-                >
-                  <ChevronIcon expanded={schemaExpanded} />
-                  <SchemaIcon />
-                  <span
-                    style={{
-                      color: 'var(--color-text-muted)',
-                      fontSize: '0.6875rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  >
-                    main
-                  </span>
-                </button>
-
-                {schemaExpanded && (
-                  <div style={{ paddingLeft: '14px' }}>
-                    {tables.map((t) => (
-                      <div
-                        key={t.name}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '2px 4px',
-                          borderRadius: '3px',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--color-surface)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent'
-                        }}
-                      >
-                        <TableIcon />
-                        <span
-                          style={{
-                            color: 'var(--color-text-secondary)',
-                            fontSize: '0.6875rem',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={t.name}
-                        >
-                          {t.name}
-                        </span>
-                      </div>
-                    ))}
-                    {views.map((v) => (
-                      <div
-                        key={v.name}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '2px 4px',
-                          borderRadius: '3px',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--color-surface)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent'
-                        }}
-                      >
-                        <ViewIcon />
-                        <span
-                          style={{
-                            color: 'var(--color-text-secondary)',
-                            fontSize: '0.6875rem',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={v.name}
-                        >
-                          {v.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
+            groups.map((g) => <SchemaSection key={g.schema} group={g} />)
           )}
         </div>
       )}

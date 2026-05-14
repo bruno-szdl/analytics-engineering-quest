@@ -14,12 +14,13 @@ In our project, \`stg_customers\` is in place from the previous lesson. Now you'
     'models/dim_customers.sql': `-- Replace this line with a SELECT that uses {{ ref('stg_customers') }}.
 `,
   },
-  seeds: { raw_customers: RAW_CUSTOMERS_CSV },
+  openFiles: ['models/dim_customers.sql', 'models/stg_customers.sql'],
+  seeds: { 'raw.customers': RAW_CUSTOMERS_CSV },
   preRanModels: ['stg_customers'],
   tasks: [
     {
       id: 'create',
-      prompt: 'Open `models/dim_customers.sql` (tab next to `stg_customers.sql`) and write a SELECT that reads all columns from `stg_customers` using `ref()`.',
+      prompt: 'In `models/dim_customers.sql`, write a SELECT that reads all columns from `stg_customers` using `ref()`.',
       hint: "Try: `select * from {{ ref('stg_customers') }}`",
       validate: (s) => hasModel(s, 'dim_customers') && modelRefs(s, 'dim_customers', 'stg_customers'),
     },
@@ -32,7 +33,7 @@ In our project, \`stg_customers\` is in place from the previous lesson. Now you'
     {
       id: 'run',
       prompt: 'Run `dbt run` and make sure `dim_customers` builds.',
-      validate: (s) => modelRan(s, 'dim_customers'),
+      validate: (s) => s.buildSucceeded && modelRan(s, 'dim_customers'),
     },
   ],
   quiz: {

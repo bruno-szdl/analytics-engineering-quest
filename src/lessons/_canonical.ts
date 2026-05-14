@@ -36,14 +36,14 @@ BR,Brazil,Americas
 IN,India,Asia
 DE,Germany,Europe`
 
-// ─── Pre-source form (lessons 1–4: FROM raw_customers / raw_orders) ────────
+// ─── Pre-source form (lessons 1–4: hardcoded schema.table, no source()) ─────
 
 export const STG_CUSTOMERS_HARDCODED = `select
     id,
     name,
     email,
     country
-from raw_customers`
+from raw.customers`
 
 export const STG_ORDERS_HARDCODED = `select
     id as order_id,
@@ -51,7 +51,7 @@ export const STG_ORDERS_HARDCODED = `select
     amount,
     status,
     created_at
-from raw_orders`
+from raw.orders`
 
 // ─── Source form (lessons 5+: uses {{ source(...) }}) ──────────────────────
 
@@ -112,11 +112,11 @@ models:
   - name: stg_customers
     columns:
       - name: id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: email
-        tests:
+        data_tests:
           - not_null
 `
 
@@ -127,27 +127,29 @@ models:
   - name: stg_customers
     columns:
       - name: id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: email
-        tests:
+        data_tests:
           - not_null
   - name: stg_orders
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: customer_id
-        tests:
+        data_tests:
           - relationships:
-              to: ref('stg_customers')
-              field: id
+              arguments:
+                to: ref('stg_customers')
+                field: id
       - name: status
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['paid', 'refunded', 'pending']
+              arguments:
+                values: ['paid', 'refunded', 'pending']
 `
 
 /** schema.yml as of lesson 9 — descriptions added. */
@@ -159,32 +161,34 @@ models:
     columns:
       - name: id
         description: "Primary key. Stable across the customer lifecycle."
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: email
         description: "Customer email. Used as the contact channel; never null."
-        tests:
+        data_tests:
           - not_null
   - name: stg_orders
     description: "One row per order, cleaned from raw.orders."
     columns:
       - name: order_id
         description: "Primary key."
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: customer_id
         description: "FK to stg_customers.id."
-        tests:
+        data_tests:
           - relationships:
-              to: ref('stg_customers')
-              field: id
+              arguments:
+                to: ref('stg_customers')
+                field: id
       - name: status
         description: "Order lifecycle: paid, refunded, or pending."
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['paid', 'refunded', 'pending']
+              arguments:
+                values: ['paid', 'refunded', 'pending']
   - name: fct_revenue_by_customer
     description: "Total paid revenue per customer (refunds and pending excluded)."
 `

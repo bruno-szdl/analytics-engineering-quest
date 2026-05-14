@@ -145,7 +145,10 @@ export function parseTests(files: Record<string, string>, modelNames: Set<string
       }
 
       // Inside an open multi-line test, harvest its parameters.
+      // `arguments:` is just a pass-through container — skip it and read children.
       if (pending && indent > pending.indent) {
+        if (s === 'arguments:') continue
+
         if (pending.kind === 'accepted_values') {
           // `values: [a, b, c]` (inline list).
           const inline = s.match(/^values:\s*\[([^\]]*)\]/)

@@ -5,7 +5,6 @@ import { previewModel, plan, materializeModels } from '../engine/executor'
 import { getLessonById, getLastLessonId, taskKey, lessons } from '../lessons'
 import type { TerminalLine } from '../engine/runner'
 import { registerCsv, resetDb } from '../engine/duckdb'
-import { sourceViewName } from '../engine/compiler'
 import { errorMessage } from '../engine/errors'
 import { safeStorage } from './safeStorage'
 import { ALL_PANELS, type PanelKey } from '../engine/types'
@@ -44,6 +43,7 @@ function persistSeenPanels(seen: Set<PanelKey>): void {
 interface StoreState {
   files: Record<string, string>
   activeFile: string | null
+  openTabs: Set<string>
   ranModels: Set<string>
   shownModels: Set<string>
   testResults: Record<string, 'pass' | 'fail' | 'untested'>
@@ -73,6 +73,7 @@ interface StoreState {
 
   setFileContent: (path: string, content: string) => void
   openFile: (path: string) => void
+  closeTab: (path: string) => void
   createFile: (path: string, content: string) => void
   deleteFile: (path: string) => void
   renameFile: (oldPath: string, newPath: string) => boolean
@@ -91,14 +92,14 @@ interface StoreState {
 }
 
 function seedTableName(key: string): string {
-  const [src, tbl] = key.split('.')
-  return tbl ? sourceViewName(src, tbl) : src
+  return key
 }
 
 export const useGameStore = create<StoreState>()(
     (set, get) => ({
       files: {},
       activeFile: null,
+      openTabs: new Set<string>(),
       ranModels: new Set<string>(),
       shownModels: new Set<string>(),
       testResults: {},
@@ -140,6 +141,7 @@ export const useGameStore = create<StoreState>()(
       openFile: (path) => {
         set((s) => ({
           activeFile: path,
+          openTabs: s.openTabs.has(path) ? s.openTabs : new Set([...s.openTabs, path]),
           openedFiles: s.openedFiles.has(path)
             ? s.openedFiles
             : new Set([...s.openedFiles, path]),
@@ -147,24 +149,42 @@ export const useGameStore = create<StoreState>()(
         get().checkTasks()
       },
 
+      closeTab: (path) => {
+        set((s) => {
+          const next = new Set(s.openTabs)
+          next.delete(path)
+          let activeFile = s.activeFile
+          if (activeFile === path) {
+            const tabs = [...s.openTabs]
+            const idx = tabs.indexOf(path)
+            const remaining = tabs.filter((t) => t !== path)
+            activeFile = remaining[Math.min(idx, remaining.length - 1)] ?? null
+          }
+          return { openTabs: next, activeFile }
+        })
+      },
+
       createFile: (path, content) =>
         set((s) => ({
           files: { ...s.files, [path]: content },
           activeFile: path,
+          openTabs: new Set([...s.openTabs, path]),
+          openedFiles: new Set([...s.openedFiles, path]),
         })),
 
       deleteFile: (path) =>
         set((s) => {
           const files = { ...s.files }
           delete files[path]
-          const remaining = Object.keys(files)
-          const activeFile =
-            s.activeFile === path
-              ? remaining.length > 0
-                ? remaining[0]
-                : null
-              : s.activeFile
-          return { files, activeFile }
+          const nextTabs = new Set(s.openTabs)
+          nextTabs.delete(path)
+          const tabs = [...s.openTabs].filter((t) => t !== path)
+          let activeFile = s.activeFile
+          if (activeFile === path) {
+            const idx = [...s.openTabs].indexOf(path)
+            activeFile = tabs[Math.min(idx, tabs.length - 1)] ?? null
+          }
+          return { files, openTabs: nextTabs, activeFile }
         }),
 
       renameFile: (oldPath, newPath) => {
@@ -179,9 +199,11 @@ export const useGameStore = create<StoreState>()(
         for (const [k, v] of Object.entries(s.files)) {
           files[k === oldPath ? trimmed : k] = v
         }
+        const nextTabs = new Set([...s.openTabs].map((t) => (t === oldPath ? trimmed : t)))
         set({
           files,
           activeFile: s.activeFile === oldPath ? trimmed : s.activeFile,
+          openTabs: nextTabs,
         })
         get().checkTasks()
         return true
@@ -322,7 +344,9 @@ export const useGameStore = create<StoreState>()(
           checkTasksTimer = null
         }
 
-        const firstFile = Object.keys(lesson.initialFiles)[0] ?? null
+        const initialKeys = Object.keys(lesson.initialFiles)
+        const filesToOpen = lesson.openFiles ?? [initialKeys[0]].filter(Boolean)
+        const firstFile = filesToOpen[0] ?? initialKeys[0] ?? null
 
         // Required panels for this lesson. Omitted = "show everything" (later
         // lessons don't need to opt in). Explicit `[]` is the minimum-UI case.
@@ -338,6 +362,7 @@ export const useGameStore = create<StoreState>()(
         set({
           files: { ...lesson.initialFiles },
           activeFile: firstFile,
+          openTabs: filesToOpen.length > 0 ? new Set(filesToOpen) : new Set<string>(),
           ranModels: new Set<string>(),
           shownModels: new Set<string>(),
           testResults: {},

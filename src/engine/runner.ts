@@ -336,7 +336,6 @@ export async function execute(
   const wantRun = command.type === 'run' || command.type === 'build'
   const wantTest = command.type === 'test' || command.type === 'build'
   let runFailed = false
-  let testFailed = false
 
   if (wantRun) {
     const srcCount = countUniqueSources(selected)
@@ -433,7 +432,7 @@ export async function execute(
       }
       const passed = outcomes.filter((t) => t.passed).length
       const failed = outcomes.length - passed
-      if (failed > 0) testFailed = true
+
       lines.push({ text: '' })
       lines.push({
         text: `Finished running ${outcomes.length} test${outcomes.length !== 1 ? 's' : ''}.`,
@@ -452,7 +451,7 @@ export async function execute(
     testResults: newTestResults,
     modelColumns: newColumns,
   }
-  if (command.type === 'build' && !runFailed && !testFailed) {
+  if ((command.type === 'run' || command.type === 'build') && !runFailed) {
     updatedState.buildSucceeded = true
   }
   return { lines, updatedState }

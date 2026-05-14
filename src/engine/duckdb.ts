@@ -62,13 +62,19 @@ export async function exec(sql: string): Promise<void> {
 
 export async function registerCsv(name: string, csv: string): Promise<void> {
   const db = await getDb()
-  // Drop any stale file registration before re-registering the same name.
-  try { await db.dropFile(`${name}.csv`) } catch { /* not registered yet */ }
-  await db.registerFileText(`${name}.csv`, csv)
+  const dotIdx = name.indexOf('.')
+  const schema = dotIdx !== -1 ? name.slice(0, dotIdx) : 'main'
+  const table = dotIdx !== -1 ? name.slice(dotIdx + 1) : name
+  const fileKey = `${schema}_${table}`
+  try { await db.dropFile(`${fileKey}.csv`) } catch { /* not registered yet */ }
+  await db.registerFileText(`${fileKey}.csv`, csv)
   const conn = await db.connect()
   try {
+    if (schema !== 'main') {
+      await conn.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    }
     await conn.query(
-      `CREATE OR REPLACE TABLE "${name}" AS SELECT * FROM read_csv_auto('${name}.csv', header=true)`,
+      `CREATE OR REPLACE TABLE "${schema}"."${table}" AS SELECT * FROM read_csv_auto('${fileKey}.csv', header=true)`,
     )
   } finally {
     await conn.close()
@@ -87,25 +93,37 @@ export async function resetDb(): Promise<void> {
   try { await db.dropFiles() } catch { /* nothing registered */ }
   const conn = await db.connect()
   try {
-    // Drop views first (they may reference tables).
-    const viewRes = await conn.query(
-      `SELECT table_name FROM information_schema.tables
-         WHERE table_schema = 'main' AND table_type = 'VIEW'`,
+    const schemaRes = await conn.query(
+      `SELECT schema_name FROM information_schema.schemata
+         WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+         ORDER BY schema_name`,
     )
-    const viewCol = viewRes.getChild('table_name')
-    for (let i = 0; i < viewRes.numRows; i++) {
-      const name = viewCol?.get(i) as string | null
-      if (name) await conn.query(`DROP VIEW IF EXISTS "${name}" CASCADE`)
+    const schemaCol = schemaRes.getChild('schema_name')
+    const schemas: string[] = []
+    for (let i = 0; i < schemaRes.numRows; i++) {
+      const s = schemaCol?.get(i) as string | null
+      if (s) schemas.push(s)
     }
-    // Then tables.
-    const tblRes = await conn.query(
-      `SELECT table_name FROM information_schema.tables
-         WHERE table_schema = 'main' AND table_type = 'BASE TABLE'`,
-    )
-    const tblCol = tblRes.getChild('table_name')
-    for (let i = 0; i < tblRes.numRows; i++) {
-      const name = tblCol?.get(i) as string | null
-      if (name) await conn.query(`DROP TABLE IF EXISTS "${name}" CASCADE`)
+    // Drop views first (they may reference tables), then tables, then non-main schemas.
+    for (const type of ['VIEW', 'BASE TABLE']) {
+      for (const schema of schemas) {
+        const res = await conn.query(
+          `SELECT table_name FROM information_schema.tables
+             WHERE table_schema = '${schema}' AND table_type = '${type}'`,
+        )
+        const col = res.getChild('table_name')
+        for (let i = 0; i < res.numRows; i++) {
+          const name = col?.get(i) as string | null
+          if (!name) continue
+          const drop = type === 'VIEW' ? 'DROP VIEW' : 'DROP TABLE'
+          await conn.query(`${drop} IF EXISTS "${schema}"."${name}" CASCADE`)
+        }
+      }
+    }
+    for (const schema of schemas) {
+      if (schema !== 'main') {
+        await conn.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+      }
     }
   } finally {
     await conn.close()

@@ -10,7 +10,7 @@ const lesson01: Lesson = {
 
 A **model** in dbt is just a \`SELECT\` statement saved as a \`.sql\` file inside the \`models/\` folder. When you run dbt, it turns that query into a **view** in your database (a saved query the database knows by name).
 
-The project already has one model: \`stg_customers.sql\`. It reads from a raw table called \`raw_customers\`.
+The project already has one model: \`stg_customers.sql\`. It reads from a raw table called \`raw.customers\`.
 
 Two commands you'll use constantly:
 
@@ -22,7 +22,7 @@ Try them below.`,
   initialFiles: {
     'models/stg_customers.sql': STG_CUSTOMERS_HARDCODED,
   },
-  seeds: { raw_customers: RAW_CUSTOMERS_CSV },
+  seeds: { 'raw.customers': RAW_CUSTOMERS_CSV },
   tasks: [
     {
       id: 'run',

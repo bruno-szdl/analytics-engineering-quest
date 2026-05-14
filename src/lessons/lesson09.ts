@@ -25,7 +25,7 @@ Good documentation isn't about completeness. It's about the *non-obvious* bits. 
 
 If a name is self-explanatory, you don't need to describe it. Spend your words on what the name *can't* tell you: what a status value means, why a column is nullable, which team owns the model.
 
-The project already has tests on \`stg_customers\` and \`stg_orders\`. Now let's add descriptions where they earn their keep.`,
+The project already has data tests on \`stg_customers\` and \`stg_orders\`. Now let's add descriptions where they earn their keep.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
@@ -43,30 +43,33 @@ models:
     description: ""
     columns:
       - name: id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: email
-        tests:
+        data_tests:
           - not_null
   - name: stg_orders
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - not_null
           - unique
       - name: customer_id
-        tests:
+        data_tests:
           - relationships:
-              to: ref('stg_customers')
-              field: id
+              arguments:
+                to: ref('stg_customers')
+                field: id
       - name: status
         description: ""
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['paid', 'refunded', 'pending']
+              arguments:
+                values: ['paid', 'refunded', 'pending']
 `,
   },
+  openFiles: ['models/schema.yml'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,

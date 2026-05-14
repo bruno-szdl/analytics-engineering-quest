@@ -255,60 +255,15 @@ function toRfEdges(dagEdges: DagEdge[], isDark: boolean): Edge[] {
   }))
 }
 
-// ── ghost goal overlay ────────────────────────────────────────────────────────
-
-function GhostGoal({ shape, isDark }: { shape: GoalDagShape; isDark: boolean }) {
-  const count = shape.nodes.length
-  if (count === 0) return null
-  const cols = Math.max(1, Math.ceil(Math.sqrt(count)))
-
-  return (
-    <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.18, zIndex: 0 }}>
-      <div className="relative w-full h-full">
-        {shape.nodes.map((n, i) => {
-          const col = i % cols
-          const row = Math.floor(i / cols)
-          const totalCols = Math.min(cols, count)
-          const left = `${10 + col * (80 / Math.max(totalCols - 1, 1))}%`
-          const top = `${25 + row * 40}%`
-          const color = layerColor(n.layer, isDark)
-          return (
-            <div
-              key={n.id}
-              style={{
-                position: 'absolute',
-                left,
-                top,
-                transform: 'translate(-50%, -50%)',
-                border: `1px dashed ${color}`,
-                borderRadius: '5px',
-                padding: '5px 10px',
-                color,
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.5625rem',
-                whiteSpace: 'nowrap',
-                background: `${color}08`,
-              }}
-            >
-              {n.label}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 // ── inner canvas ──────────────────────────────────────────────────────────────
 
 interface DagCanvasProps {
   rfNodes: Node[]
   rfEdges: Edge[]
-  goalShape?: GoalDagShape
   isDark: boolean
 }
 
-function DagCanvas({ rfNodes, rfEdges, goalShape, isDark }: DagCanvasProps) {
+function DagCanvas({ rfNodes, rfEdges, isDark }: DagCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges)
   const rfRef = useRef<ReactFlowInstance | null>(null)
@@ -341,7 +296,6 @@ function DagCanvas({ rfNodes, rfEdges, goalShape, isDark }: DagCanvasProps) {
 
   return (
     <div className="relative w-full h-full">
-      {goalShape && <GhostGoal shape={goalShape} isDark={isDark} />}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -410,7 +364,7 @@ interface DagPanelProps {
   orientation?: Orientation
 }
 
-export default function DagPanel({ goalShape, embedded = false, orientation = 'horizontal' }: DagPanelProps) {
+export default function DagPanel({ embedded = false, orientation = 'horizontal' }: DagPanelProps) {
   const files = useGameStore((s) => s.files)
   const ranModels = useGameStore((s) => s.ranModels)
   const testResults = useGameStore((s) => s.testResults)
@@ -452,23 +406,6 @@ export default function DagPanel({ goalShape, embedded = false, orientation = 'h
           </span>
         </div>
 
-        {goalShape && (
-          <div className="flex items-center gap-1.5">
-            <div
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: 'var(--color-accent-orange)', opacity: 0.6 }}
-            />
-            <span
-              style={{
-                color: 'var(--color-muted)',
-                fontSize: '0.625rem',
-                fontFamily: 'JetBrains Mono, monospace',
-              }}
-            >
-              goal
-            </span>
-          </div>
-        )}
       </div>
       )}
 
@@ -477,7 +414,7 @@ export default function DagPanel({ goalShape, embedded = false, orientation = 'h
         {isEmpty ? (
           <EmptyState />
         ) : (
-          <DagCanvas rfNodes={rfNodes} rfEdges={rfEdges} goalShape={goalShape} isDark={isDark} />
+          <DagCanvas rfNodes={rfNodes} rfEdges={rfEdges} isDark={isDark} />
         )}
       </div>
     </div>

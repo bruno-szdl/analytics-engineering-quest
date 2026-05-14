@@ -20,28 +20,30 @@ import {
 const lesson08: Lesson = {
   id: 8,
   title: 'Relationships & accepted_values',
-  concept: `Beyond \`not_null\`/\`unique\`, two more tests show up constantly:
+  concept: `Beyond \`not_null\`/\`unique\`, two more data tests show up constantly:
 
 - **accepted_values**: column must be one of a fixed list. Great for status fields where a typo or new value could silently break dashboards.
 - **relationships**: every value in this column must exist in another model's column. This is a foreign-key check, without you ever writing one.
 
-Both are declared in YAML, alongside the simpler tests. Their syntax is slightly more involved because they take parameters:
+Both are declared in YAML under \`data_tests:\`, alongside the simpler data tests. Their syntax is slightly more involved because they take parameters:
 
 \`\`\`yaml
 - name: status
-  tests:
+  data_tests:
     - accepted_values:
-        values: ['paid', 'refunded', 'pending']
+        arguments:
+          values: ['paid', 'refunded', 'pending']
 - name: customer_id
-  tests:
+  data_tests:
     - relationships:
-        to: ref('stg_customers')
-        field: id
+        arguments:
+          to: ref('stg_customers')
+          field: id
 \`\`\`
 
 Notice the indentation: the test name (\`accepted_values\` / \`relationships\`) is followed by a colon, then the parameter block indented underneath.
 
-Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous lesson. Now you'll add the two new tests to \`stg_orders\`.`,
+Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous lesson. Now you'll add the two new data tests to \`stg_orders\`.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
@@ -54,13 +56,14 @@ Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous le
     'models/schema.yml': SCHEMA_YML_L7 + `  - name: stg_orders
     columns:
       - name: status
-        tests:
-          # add an accepted_values test here (values: ['paid', 'refunded', 'pending'])
+        data_tests:
+          # add an accepted_values data test here
       - name: customer_id
-        tests:
-          # add a relationships test here (to stg_customers, field id)
+        data_tests:
+          # add a relationships data test here
 `,
   },
+  openFiles: ['models/schema.yml'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
@@ -78,13 +81,13 @@ Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous le
     {
       id: 'accepted',
       prompt: "Add an `accepted_values` test to `stg_orders.status` allowing `['paid', 'refunded', 'pending']`.",
-      hint: "Under the column's `tests:` line, add:\n```\n          - accepted_values:\n              values: ['paid', 'refunded', 'pending']\n```\n(10 spaces before the dash; 14 before `values:`.)",
+      hint: "Under the column's `data_tests:` line, add:\n```\n          - accepted_values:\n              arguments:\n                values: ['paid', 'refunded', 'pending']\n```",
       validate: (s) => testDefinitionsInclude(s, 'stg_orders', ['accepted_values']),
     },
     {
       id: 'rel',
       prompt: "Add a `relationships` test to `stg_orders.customer_id` pointing at `stg_customers.id`.",
-      hint: "Add:\n```\n          - relationships:\n              to: ref('stg_customers')\n              field: id\n```",
+      hint: "Add:\n```\n          - relationships:\n              arguments:\n                to: ref('stg_customers')\n                field: id\n```",
       validate: (s) => testDefinitionsInclude(s, 'stg_orders', ['relationships']),
     },
     {

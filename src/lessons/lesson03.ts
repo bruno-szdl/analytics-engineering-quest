@@ -37,14 +37,15 @@ So far our project handles customers. Now we'll add orders. \`stg_orders\` is al
 `,
   },
   seeds: {
-    raw_customers: RAW_CUSTOMERS_CSV,
-    raw_orders: RAW_ORDERS_CSV,
+    'raw.customers': RAW_CUSTOMERS_CSV,
+    'raw.orders': RAW_ORDERS_CSV,
   },
+  openFiles: ['models/int_paid_orders.sql', 'models/stg_orders.sql'],
   preRanModels: ['stg_customers', 'dim_customers', 'stg_orders'],
   tasks: [
     {
       id: 'int-ref',
-      prompt: 'Open `models/int_paid_orders.sql` and write a `select` that reads from `{{ ref(\'stg_orders\') }}`.',
+      prompt: 'In `models/int_paid_orders.sql`, write a `select` that reads from `{{ ref(\'stg_orders\') }}`.',
       hint: "Start with: `select * from {{ ref('stg_orders') }}`. You'll add the WHERE next.",
       validate: (s) => hasModel(s, 'int_paid_orders') && modelRefs(s, 'int_paid_orders', 'stg_orders'),
     },
@@ -77,6 +78,7 @@ So far our project handles customers. Now we'll add orders. \`stg_orders\` is al
       id: 'run',
       prompt: 'Run `dbt run` and confirm all the new models build.',
       validate: (s) =>
+        s.buildSucceeded &&
         modelRan(s, 'stg_orders') &&
         modelRan(s, 'int_paid_orders') &&
         modelRan(s, 'fct_revenue_by_customer'),

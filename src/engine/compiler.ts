@@ -35,9 +35,9 @@ const INCREMENTAL_IF_RE =
 // model's own name so simple self-references don't break.
 const THIS_RE = /\{\{\s*this\s*\}\}/g
 
-/** Name that a dbt source("s","t") maps to in DuckDB. */
+/** Schema-qualified name that a dbt source("s","t") maps to in DuckDB. */
 export function sourceViewName(source: string, table: string): string {
-  return `${source}__${table}`
+  return `"${source}"."${table}"`
 }
 
 function extractTagsFromConfig(inner: string): string[] {
@@ -120,14 +120,14 @@ export function compileModel(name: string, path: string, raw: string): CompiledM
     })
     .replace(SOURCE_RE, (_m, src: string, tbl: string) => {
       sources.push({ source: src, table: tbl })
-      return `"${sourceViewName(src, tbl)}"`
+      return sourceViewName(src, tbl)
     })
     .replace(THIS_RE, `"${name}"`)
 
   if (incrementalFilter !== undefined) {
     incrementalFilter = incrementalFilter
       .replace(REF_RE, (_m, modelName: string) => `"${modelName}"`)
-      .replace(SOURCE_RE, (_m, src: string, tbl: string) => `"${sourceViewName(src, tbl)}"`)
+      .replace(SOURCE_RE, (_m, src: string, tbl: string) => sourceViewName(src, tbl))
       .replace(THIS_RE, `"${name}"`)
       .trim()
   }

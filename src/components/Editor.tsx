@@ -68,11 +68,13 @@ export default function Editor() {
   const files = useGameStore((s) => s.files)
   const activeFile = useGameStore((s) => s.activeFile)
   const openFile = useGameStore((s) => s.openFile)
+  const closeTab = useGameStore((s) => s.closeTab)
   const setFileContent = useGameStore((s) => s.setFileContent)
   const theme = useGameStore((s) => s.theme)
   const currentLessonId = useGameStore((s) => s.currentLessonId)
+  const openTabs = useGameStore((s) => s.openTabs)
 
-  const filePaths = Object.keys(files).sort()
+  const tabPaths = [...openTabs].filter((p) => p in files)
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-base)' }}>
@@ -96,28 +98,69 @@ export default function Editor() {
         </div>
 
         <div className="flex items-end h-full">
-          {filePaths.map((path) => {
+          {tabPaths.map((path) => {
             const isActive = path === activeFile
             return (
-              <button
+              <div
                 key={path}
-                title={path}
-                onClick={() => openFile(path)}
-                className="flex items-center gap-1.5 px-3 shrink-0 cursor-pointer"
+                className="flex items-center shrink-0 group"
                 style={{
                   height: '36px',
                   background: isActive ? 'var(--color-base)' : 'transparent',
                   borderRight: '1px solid var(--color-border)',
                   borderTop: isActive ? '1px solid var(--color-accent-orange)' : '1px solid transparent',
-                  color: isActive ? 'var(--color-text)' : 'var(--color-text-muted)',
-                  fontSize: '0.6875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                  outline: 'none',
                 }}
               >
-                <FileIcon path={path} />
-                <span>{basename(path)}</span>
-              </button>
+                <button
+                  title={path}
+                  onClick={() => openFile(path)}
+                  className="flex items-center gap-1.5 cursor-pointer"
+                  style={{
+                    height: '100%',
+                    padding: '0 6px 0 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: isActive ? 'var(--color-text)' : 'var(--color-text-muted)',
+                    fontSize: '0.6875rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    outline: 'none',
+                  }}
+                >
+                  <FileIcon path={path} />
+                  <span>{basename(path)}</span>
+                </button>
+                <button
+                  title="Close tab"
+                  onClick={(e) => { e.stopPropagation(); closeTab(path) }}
+                  className="flex items-center justify-center cursor-pointer"
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    marginRight: '4px',
+                    flexShrink: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '3px',
+                    color: 'var(--color-muted)',
+                    fontSize: '0.75rem',
+                    lineHeight: 1,
+                    outline: 'none',
+                    opacity: isActive ? 1 : 0,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '1'
+                    e.currentTarget.style.background = 'var(--color-border-subtle)'
+                    e.currentTarget.style.color = 'var(--color-text)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = isActive ? '1' : '0'
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = 'var(--color-muted)'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             )
           })}
         </div>

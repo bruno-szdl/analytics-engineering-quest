@@ -31,15 +31,10 @@ In this lesson the team has dropped a \`seeds/countries.csv\` lookup into the pr
     'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
     'seeds/countries.csv': COUNTRIES_CSV,
-    'models/dim_countries.sql': `-- This model reads from the countries seed.
--- Seeds are referenced with ref(), just like models.
-
-select
-    code,
-    name,
-    region
-from {{ ref('countries') }}`,
+    'models/dim_countries.sql': `-- Write a SELECT that reads from the countries seed using ref().
+`,
   },
+  openFiles: ['seeds/countries.csv', 'models/dim_countries.sql'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
@@ -47,7 +42,7 @@ from {{ ref('countries') }}`,
   tasks: [
     {
       id: 'inspect',
-      prompt: 'Open `seeds/countries.csv` (in the file tree) and skim its contents. Notice it lives under `seeds/`, not `models/`.',
+      prompt: 'Skim `seeds/countries.csv` — it lives under `seeds/`, not `models/`. Notice the header row and five data rows.',
       hint: 'Click the file in the file tree on the left. CSVs render as plain text — you should see one header row and five data rows.',
       validate: (s) => s.openedFiles.has('seeds/countries.csv') || s.loadedSeeds.has('countries'),
     },
@@ -59,8 +54,8 @@ from {{ ref('countries') }}`,
     },
     {
       id: 'ref',
-      prompt: 'Confirm that `dim_countries` references the seed via `{{ ref(\'countries\') }}`.',
-      hint: 'Open `models/dim_countries.sql` — it should already use `ref()`. Seeds and models are referenced the same way.',
+      prompt: 'In `models/dim_countries.sql`, write a SELECT that reads all columns from the `countries` seed using `{{ ref(\'countries\') }}`.',
+      hint: "Try: `select * from {{ ref('countries') }}`",
       validate: (s) => hasModel(s, 'dim_countries') && modelRefs(s, 'dim_countries', 'countries'),
     },
     {

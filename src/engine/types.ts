@@ -71,6 +71,8 @@ export interface Lesson {
   /** Short conceptual explanation shown at the top of the lesson panel. */
   concept: string
   initialFiles: Record<string, string>
+  /** Files to open as editor tabs on lesson load. First entry becomes the active tab. Defaults to the first key in initialFiles. */
+  openFiles?: string[]
   seeds?: Seeds
   /** Models to silently materialize when the lesson loads. */
   preRanModels?: string[]

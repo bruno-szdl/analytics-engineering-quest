@@ -33,9 +33,10 @@ Our project's marts get hit often by downstream consumers. Convert \`dim_custome
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
   },
   seeds: {
-    raw_customers: RAW_CUSTOMERS_CSV,
-    raw_orders: RAW_ORDERS_CSV,
+    'raw.customers': RAW_CUSTOMERS_CSV,
+    'raw.orders': RAW_ORDERS_CSV,
   },
+  openFiles: ['models/dim_customers.sql', 'models/stg_customers.sql'],
   preRanModels: ['stg_customers', 'dim_customers', 'stg_orders', 'int_paid_orders', 'fct_revenue_by_customer'],
   tasks: [
     {
@@ -53,7 +54,7 @@ Our project's marts get hit often by downstream consumers. Convert \`dim_custome
     {
       id: 'run',
       prompt: 'Run `dbt run` and watch both models build with their chosen materializations.',
-      validate: (s) => modelRan(s, 'dim_customers') && modelRan(s, 'stg_customers'),
+      validate: (s) => s.buildSucceeded && modelRan(s, 'dim_customers') && modelRan(s, 'stg_customers'),
     },
   ],
   quiz: {

@@ -37,15 +37,21 @@ export default function IntroPage() {
         <p style={{ margin: '0 0 16px' }}>
           Welcome to <strong style={{ color: 'var(--color-text)' }}>dbt-quest</strong>, a series of
           short, interactive lessons designed to help you learn{' '}
-          <strong style={{ color: 'var(--color-text)' }}>dbt</strong> right in your browser. No
-          installs, no warehouse setup. Just SQL, a fake project, and a real DuckDB engine running
-          on this page.
+          <strong style={{ color: 'var(--color-text)' }}>dbt</strong> right in your browser, inspired by{' '}
+          <a
+            href="https://sqlbolt.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}
+          >
+            SQLBolt
+          </a>.
         </p>
 
         <SectionHeader>What is dbt?</SectionHeader>
         <p style={{ margin: '0 0 16px' }}>
           dbt is the open-source tool data teams use to turn raw warehouse tables into trustworthy,
-          documented, tested models. It sits on top of any SQL warehouse (Snowflake, Databricks, igQuery,
+          documented, tested models. It sits on top of any SQL warehouse (Snowflake, Databricks, BigQuery,
           Postgres, DuckDB, …) and gives you a way to manage your transformation SQL <em>as code</em>:
           version-controlled, modular, and testable.
         </p>
@@ -54,7 +60,6 @@ export default function IntroPage() {
           dbt projects are just folders of <code>.sql</code> and <code>.yml</code> files. No proprietary syntax. If you can write SQL, you can write dbt. But dbt turns those files into something bigger: a managed, tested, documented, version-controlled transformation framework with full lineage.
         </Aside>
 
-        <SectionHeader>The mental model</SectionHeader>
         <p style={{ margin: '0 0 12px' }}>
           A dbt project is a folder full of <code>.sql</code> files. Each file is a{' '}
           <code>SELECT</code> statement (what dbt calls a <strong style={{ color: 'var(--color-text)' }}>model</strong>).
@@ -80,29 +85,10 @@ export default function IntroPage() {
           and runs the models left-to-right.
         </p>
 
-        <SectionHeader>The workspace</SectionHeader>
-        <p style={{ margin: '0 0 16px' }}>
-          When you start lesson 1, the page splits into three columns. Here's what each region does:
-        </p>
-        <WorkspaceMock />
-        <p style={{ margin: '8px 0 16px', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-          You won't see every panel on lesson 1. They fade in as the lessons need them. By the
-          time you've built a few models, the full layout above will be on screen.
-        </p>
-
         <SectionHeader>About the lessons</SectionHeader>
         <p style={{ margin: '0 0 16px' }}>
           There are 12 short lessons. Each one introduces a single concept, then gives you 3–5
-          small tasks to apply it. The tasks share one workspace — files you create in task 1
-          are still there in task 2.
-        </p>
-        <p style={{ margin: '0 0 16px' }}>
-          Across lessons, every chapter is a <strong style={{ color: 'var(--color-text)' }}>snapshot
-          of the same fictional dbt project</strong>, picking up where the previous one left off.
-          When lesson 5 opens, the staging models from lessons 1–3 are already in your editor; by
-          lesson 12 you'll have a full staging → intermediate → marts pipeline with tests, docs,
-          and seeds. Each lesson resets to its own clean snapshot, so you can jump ahead or replay
-          any chapter without breaking progress.
+          small tasks to apply it.
         </p>
         <p style={{ margin: '0 0 16px' }}>
           Go at your pace, edit the SQL freely, and don't worry about breaking things. Every
@@ -357,120 +343,5 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: `1.5px solid ${color}`, display: 'inline-block' }} />
       {label}
     </span>
-  )
-}
-
-function WorkspaceMock() {
-  return (
-    <div style={{ margin: '8px 0 20px' }}>
-      <div
-        style={{
-          border: '1px solid var(--color-border)',
-          borderRadius: '8px',
-          background: 'var(--color-surface)',
-          padding: '10px',
-          display: 'grid',
-          gridTemplateColumns: '130px 130px 1fr',
-          gridTemplateRows: '54px 54px 54px',
-          gap: '6px',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.6875rem',
-          color: 'var(--color-text-muted)',
-        }}
-      >
-        {/* Left column: Lesson panel spans all three rows */}
-        <div style={{ gridColumn: '1 / 2', gridRow: '1 / 4' }}>
-          <MockCell label="① Lesson" full />
-        </div>
-        {/* Middle column: Files / Warehouse / Lineage, one per row */}
-        <MockCell label="② Files" />
-        <MockCell label="③ Warehouse" />
-        <MockCell label="④ Lineage" />
-        {/* Right column: Editor (rows 1-2) + Console (row 3) */}
-        <div style={{ gridColumn: '3 / 4', gridRow: '1 / 3' }}>
-          <MockCell label="⑤ Editor" emphasis full />
-        </div>
-        <MockCell label="⑥ Console" />
-      </div>
-      <ol style={{ margin: '14px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <Bullet n={1} title="Lesson">
-          The concept, the task checklist, the end-of-lesson quiz, and a "Next lesson →" button.
-          Your guide through every step.
-        </Bullet>
-        <Bullet n={2} title="Files">
-          The dbt project tree. Models live under <code>models/</code>, tests under{' '}
-          <code>tests/</code>, raw CSV seeds under <code>seeds/</code>. Hover a file for rename
-          and delete; double-click or press F2 to rename inline.
-        </Bullet>
-        <Bullet n={3} title="Warehouse">
-          The DuckDB database that's running on this page. As you build models, they appear here as
-          tables and views (proof that your SQL actually ran).
-        </Bullet>
-        <Bullet n={4} title="Lineage">
-          The DAG. Every <code>ref()</code> call in your SQL becomes an arrow between two models,
-          updated live as you edit.
-        </Bullet>
-        <Bullet n={5} title="Editor">
-          Monaco (the same editor as VS Code). Tabs at the top for every open file. Edits save
-          instantly; no save button.
-        </Bullet>
-        <Bullet n={6} title="Console">
-          A terminal where you type <code>dbt run</code>, <code>dbt test</code>,{' '}
-          <code>dbt build</code>, and a Results tab that shows row previews from{' '}
-          <code>dbt show</code>.
-        </Bullet>
-      </ol>
-    </div>
-  )
-}
-
-function MockCell({ label, emphasis, full }: { label: string; emphasis?: boolean; full?: boolean }) {
-  return (
-    <div
-      style={{
-        height: full ? '100%' : undefined,
-        background: emphasis ? 'var(--color-accent-bg)' : 'var(--color-base)',
-        border: `1px solid ${emphasis ? 'var(--color-accent-orange-dim)' : 'var(--color-border)'}`,
-        borderRadius: '5px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '4px',
-        textAlign: 'center' as const,
-        color: emphasis ? 'var(--color-accent-orange)' : 'var(--color-text-muted)',
-      }}
-    >
-      {label}
-    </div>
-  )
-}
-
-function Bullet({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <li style={{ display: 'flex', gap: '12px' }}>
-      <span
-        style={{
-          flexShrink: 0,
-          width: '22px',
-          height: '22px',
-          borderRadius: '50%',
-          background: 'var(--color-accent-bg)',
-          border: '1px solid var(--color-accent-orange-dim)',
-          color: 'var(--color-accent-orange)',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.6875rem',
-          fontWeight: 700,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: '1px',
-        }}
-      >
-        {n}
-      </span>
-      <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-        <strong style={{ color: 'var(--color-text)' }}>{title}.</strong> {children}
-      </div>
-    </li>
   )
 }
