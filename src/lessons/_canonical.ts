@@ -29,6 +29,18 @@ export const RAW_ORDERS_CSV = `id,customer_id,amount,status,created_at
 105,4,55.00,paid,2024-02-04
 106,2,8.00,pending,2024-02-09`
 
+/**
+ * Dirty variant of raw.customers — Eve's email is missing. IDs stay unique, so
+ * only a `not_null` test on `email` catches it. Used by lesson 7 to let the
+ * learner experience a test failing on real bad data, then fix it.
+ */
+export const RAW_CUSTOMERS_CSV_DIRTY = `id,name,email,country
+1,Alice,alice@example.com,US
+2,Bob,bob@example.com,CA
+3,Carol,carol@example.com,BR
+4,Dave,dave@example.com,IN
+5,Eve,,DE`
+
 export const COUNTRIES_CSV = `code,name,region
 US,United States,Americas
 CA,Canada,Americas

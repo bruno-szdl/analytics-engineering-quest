@@ -33,6 +33,8 @@ interface ModelNodeData {
   hasCycle: boolean
   isDark: boolean
   orientation: Orientation
+  /** Dimmed because a selector (typed or last-run) doesn't include this node. */
+  isFaded: boolean
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -120,6 +122,8 @@ function ModelNode({ data }: { data: ModelNodeData }) {
         flexDirection: 'column',
         gap: '2px',
         position: 'relative',
+        opacity: data.isFaded ? 0.25 : 1,
+        transition: 'opacity 150ms ease',
       }}
     >
       <Handle
@@ -227,6 +231,7 @@ function toRfNodes(
   testResults: Record<string, 'pass' | 'fail' | 'untested'>,
   isDark: boolean,
   orientation: Orientation,
+  selection: Set<string> | null,
 ): Node[] {
   return dagNodes.map((n) => {
     let status: NodeStatus = 'idle'
@@ -235,11 +240,15 @@ function toRfNodes(
     } else if (n.layer !== 'source' && ranModels.has(n.id)) {
       status = testResults[n.id] === 'fail' ? 'fail' : 'ok'
     }
+    // With an active selection, fade every node the selector misses — including
+    // sources. resolveSelection already decides which node kinds a given command
+    // can highlight, so the panel just trusts the set.
+    const isFaded = selection !== null && !selection.has(n.id)
     return {
       id: n.id,
       type: 'modelNode',
       position: { x: 0, y: 0 },
-      data: { label: n.label, layer: n.layer, status, hasCycle: n.hasCycle, isDark, orientation } satisfies ModelNodeData,
+      data: { label: n.label, layer: n.layer, status, hasCycle: n.hasCycle, isDark, orientation, isFaded } satisfies ModelNodeData,
     }
   })
 }
@@ -368,16 +377,17 @@ export default function DagPanel({ embedded = false, orientation = 'horizontal' 
   const files = useGameStore((s) => s.files)
   const ranModels = useGameStore((s) => s.ranModels)
   const testResults = useGameStore((s) => s.testResults)
+  const dagSelection = useGameStore((s) => s.dagSelection)
   const theme = useGameStore((s) => s.theme)
   const isDark = theme === 'dark'
 
   const { rfNodes, rfEdges } = useMemo(() => {
     const { nodes: dagNodes, edges: dagEdges } = buildDag(files)
-    const rawNodes = toRfNodes(dagNodes, ranModels, testResults, isDark, orientation)
+    const rawNodes = toRfNodes(dagNodes, ranModels, testResults, isDark, orientation, dagSelection)
     const rawEdges = toRfEdges(dagEdges, isDark)
     const { nodes, edges } = applyDagreLayout(rawNodes, rawEdges, orientation)
     return { rfNodes: nodes, rfEdges: edges }
-  }, [files, ranModels, testResults, isDark, orientation])
+  }, [files, ranModels, testResults, isDark, orientation, dagSelection])
 
   const isEmpty = rfNodes.length === 0
 

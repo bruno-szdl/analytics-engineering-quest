@@ -1,10 +1,13 @@
 import type { ParsedCommand, SelectorGroup, SelectorTerm } from './commandParser'
+import { parseCommand } from './commandParser'
 import { materializeModels, plan, previewModel, type ModelOutcome } from './executor'
 import { parseTests, runTests, type TestOutcome } from './tests'
-import { type CompiledModel, getFileStem } from './compiler'
+import { type CompiledModel, collectModels, getFileStem } from './compiler'
+import { buildDag } from './dagBuilder'
 import { registerCsv } from './duckdb'
 import { collectSnapshots, runSnapshot, type SnapshotOutcome } from './snapshots'
 import { errorMessage } from './errors'
+import type { LastRunInfo } from './types'
 
 export interface TerminalLine {
   text: string
@@ -15,12 +18,14 @@ export interface RunnerState {
   files: Record<string, string>
   ranModels: Set<string>
   shownModels: Set<string>
+  compiledModels: Set<string>
   testResults: Record<string, 'pass' | 'fail' | 'untested'>
   modelColumns: Record<string, string[]>
   loadedSeeds: Set<string>
   buildSucceeded: boolean
   snapshotRunCounts: Record<string, number>
   snapshotClosedRows: Record<string, number>
+  lastRun: LastRunInfo | null
 }
 
 export interface ExecutionResult {
@@ -116,6 +121,82 @@ function applySelectors(
   return sorted.filter(m => included.has(m.name))
 }
 
+type NodeKind = 'model' | 'seed' | 'source'
+
+/**
+ * Build the full selectable universe — models, seeds, and sources — as
+ * CompiledModel-shaped entities so the selector machinery (fqn / tag / path and
+ * the `+` graph operators) resolves uniformly across all three. Each model's
+ * `source()` calls are folded into `refs` so `+` traverses model→source edges
+ * too, exactly like model→model edges.
+ */
+function selectionUniverse(files: Record<string, string>): {
+  entities: CompiledModel[]
+  kindOf: Map<string, NodeKind>
+} {
+  const kindOf = new Map<string, NodeKind>()
+  const entities: CompiledModel[] = []
+  const pseudo = (name: string, path: string): CompiledModel => ({
+    name, path, sql: '', materialization: 'view', refs: [], sources: [], tags: [],
+  })
+
+  for (const m of collectModels(files)) {
+    kindOf.set(m.name, 'model')
+    entities.push({ ...m, refs: [...m.refs, ...m.sources.map(s => `${s.source}.${s.table}`)] })
+  }
+  for (const path of Object.keys(files)) {
+    if (!path.startsWith('seeds/') || !path.endsWith('.csv')) continue
+    const name = getFileStem(path, '.csv')
+    if (kindOf.has(name)) continue
+    kindOf.set(name, 'seed')
+    entities.push(pseudo(name, path))
+  }
+  for (const node of buildDag(files).nodes) {
+    if (node.layer !== 'source' || kindOf.has(node.id)) continue
+    kindOf.set(node.id, 'source')
+    entities.push(pseudo(node.id, ''))
+  }
+  return { entities, kindOf }
+}
+
+/** Which node kinds a given command is allowed to highlight. `dbt run`,
+ *  `dbt compile` and `dbt show` only touch models, `dbt seed` only seeds;
+ *  `build` / `test` can hit any kind. */
+function allowedKinds(type: ParsedCommand['type']): Record<NodeKind, boolean> {
+  if (type === 'seed') return { model: false, seed: true, source: false }
+  if (type === 'build' || type === 'test')
+    return { model: true, seed: true, source: true }
+  return { model: true, seed: false, source: false } // run, compile, show, snapshot
+}
+
+/**
+ * Resolve the `--select` of a (possibly partially-typed) command into the set
+ * of DAG node ids it targets — for the live DAG preview.
+ *
+ * - Returns `null` when there is no usable `--select` at all (plain command or
+ *   unparseable input): the DAG should render normally.
+ * - Returns a `Set` when `--select` is present. The set may be **empty** — that
+ *   means the selector currently matches nothing the command can act on, and
+ *   every node should fade.
+ */
+export function resolveSelection(
+  input: string,
+  files: Record<string, string>,
+): Set<string> | null {
+  const parsed = parseCommand(input)
+  if (!parsed.ok || parsed.command.select.length === 0) return null
+  const { entities, kindOf } = selectionUniverse(files)
+  const allowed = allowedKinds(parsed.command.type)
+  const selected = applySelectors(entities, parsed.command.select, parsed.command.exclude)
+  const out = new Set<string>()
+  for (const e of selected)
+    if (allowed[kindOf.get(e.name) ?? 'model']) out.add(e.name)
+  // `dbt show` previews exactly one model — anything else is invalid for it,
+  // so fade the whole graph rather than implying a multi-node selection.
+  if (parsed.command.type === 'show' && out.size !== 1) return new Set()
+  return out
+}
+
 // ── output formatting ────────────────────────────────────────────────────────
 
 function dots(prefix: string, suffix: string, width = 68): string {
@@ -177,6 +258,14 @@ export async function execute(
 
   const { sorted } = plan(state.files)
   const selected = applySelectors(sorted, command.select, command.exclude)
+
+  const lastRun: LastRunInfo = {
+    command: command.type,
+    selectedModels: selected.map(m => m.name),
+    usedSelect: command.select.length > 0,
+    usedUpstream: command.select.some(g => g.terms.some(t => t.upstream)),
+    usedDownstream: command.select.some(g => g.terms.some(t => t.downstream)),
+  }
 
   lines.push({ text: '' })
   lines.push({ text: 'Running with dbt-quest (DuckDB-Wasm)', color: 'gray' })
@@ -286,16 +375,18 @@ export async function execute(
     if (selected.length === 0) {
       lines.push({ text: 'Nothing selected.', color: 'yellow' })
       lines.push({ text: '' })
-    } else {
-      for (const model of selected) {
-        lines.push({ text: `Compiled model: ${model.name}`, color: 'green' })
-        lines.push({ text: `  Path: ${model.path}`, color: 'gray' })
-        lines.push({ text: '' })
-        for (const line of model.sql.split('\n')) lines.push({ text: `  ${line}`, color: 'gray' })
-        lines.push({ text: '' })
-      }
+      return { lines, updatedState: {} }
     }
-    return { lines, updatedState: {} }
+    const newCompiled = new Set(state.compiledModels)
+    for (const model of selected) {
+      newCompiled.add(model.name)
+      lines.push({ text: `Compiled model: ${model.name}`, color: 'green' })
+      lines.push({ text: `  Path: ${model.path}`, color: 'gray' })
+      lines.push({ text: '' })
+      for (const line of model.sql.split('\n')) lines.push({ text: `  ${line}`, color: 'gray' })
+      lines.push({ text: '' })
+    }
+    return { lines, updatedState: { compiledModels: newCompiled, lastRun } }
   }
 
   if (command.type === 'show') {
@@ -330,7 +421,7 @@ export async function execute(
       lines.push({ text: errorMessage(e), color: 'red' })
       lines.push({ text: '' })
     }
-    return { lines, updatedState: {} }
+    return { lines, updatedState: { lastRun } }
   }
 
   const wantRun = command.type === 'run' || command.type === 'build'
@@ -424,6 +515,9 @@ export async function execute(
         lines.push(formatTestLine(i, outcomes.length, t))
         if (t.error) lines.push({ text: `  Error: ${t.error}`, color: 'red' })
       })
+      // Clear stale results for models in this run so a passing re-run
+      // can recover from a previous failure.
+      for (const name of modelNames) delete newTestResults[name]
       // Aggregate per-model test status: fail if any test fails, else pass.
       for (const t of outcomes) {
         const prev = newTestResults[t.model]
@@ -450,6 +544,7 @@ export async function execute(
     ranModels: newRan,
     testResults: newTestResults,
     modelColumns: newColumns,
+    lastRun,
   }
   if ((command.type === 'run' || command.type === 'build') && !runFailed) {
     updatedState.buildSucceeded = true

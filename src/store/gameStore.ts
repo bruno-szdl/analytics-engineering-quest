@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { parseCommand } from '../engine/commandParser'
-import { execute } from '../engine/runner'
+import { execute, resolveSelection } from '../engine/runner'
 import { previewModel, plan, materializeModels } from '../engine/executor'
 import { getLessonById, getLastLessonId, taskKey, lessons } from '../lessons'
 import type { TerminalLine } from '../engine/runner'
 import { registerCsv, resetDb } from '../engine/duckdb'
 import { errorMessage } from '../engine/errors'
 import { safeStorage } from './safeStorage'
-import { ALL_PANELS, type PanelKey } from '../engine/types'
+import { ALL_PANELS, type PanelKey, type LastRunInfo } from '../engine/types'
 
 export type BottomTab = 'commands' | 'results'
 
@@ -46,6 +46,7 @@ interface StoreState {
   openTabs: Set<string>
   ranModels: Set<string>
   shownModels: Set<string>
+  compiledModels: Set<string>
   testResults: Record<string, 'pass' | 'fail' | 'untested'>
   modelColumns: Record<string, string[]>
   loadedSeeds: Set<string>
@@ -56,6 +57,11 @@ interface StoreState {
   terminalHistory: TerminalLine[]
   running: boolean
   lastPreview: PreviewResult | null
+  /** Details of the most recent run/build/compile/show command. */
+  lastRun: LastRunInfo | null
+  /** Models the lineage DAG should highlight (others fade). null = render all
+   *  normally. Driven live by terminal input, then by the last run's selection. */
+  dagSelection: Set<string> | null
 
   currentLessonId: number
   /** Task progress, keyed as `<lessonId>.<taskId>`. */
@@ -79,6 +85,7 @@ interface StoreState {
   renameFile: (oldPath: string, newPath: string) => boolean
   runCommand: (input: string) => Promise<void>
   showModel: (name: string) => Promise<void>
+  setDagSelection: (selection: Set<string> | null) => void
 
   loadLesson: (id: number) => Promise<void>
   checkTasks: () => void
@@ -102,6 +109,7 @@ export const useGameStore = create<StoreState>()(
       openTabs: new Set<string>(),
       ranModels: new Set<string>(),
       shownModels: new Set<string>(),
+      compiledModels: new Set<string>(),
       testResults: {},
       modelColumns: {},
       loadedSeeds: new Set<string>(),
@@ -112,6 +120,8 @@ export const useGameStore = create<StoreState>()(
       terminalHistory: [{ text: 'dbt-quest — loading...', color: 'gray' }],
       running: false,
       lastPreview: null,
+      lastRun: null,
+      dagSelection: null,
 
       currentLessonId: 0,
       completedTasks: new Set<string>(),
@@ -238,23 +248,33 @@ export const useGameStore = create<StoreState>()(
             files: s.files,
             ranModels: s.ranModels,
             shownModels: s.shownModels,
+            compiledModels: s.compiledModels,
             testResults: s.testResults,
             modelColumns: s.modelColumns,
             loadedSeeds: s.loadedSeeds,
             buildSucceeded: s.buildSucceeded,
             snapshotRunCounts: s.snapshotRunCounts,
             snapshotClosedRows: s.snapshotClosedRows,
+            lastRun: s.lastRun,
           })
 
+          const newLastRun = result.updatedState.lastRun
           set((current) => ({
             terminalHistory: [...current.terminalHistory, ...result.lines],
             ranModels: result.updatedState.ranModels ?? current.ranModels,
+            compiledModels: result.updatedState.compiledModels ?? current.compiledModels,
             testResults: result.updatedState.testResults ?? current.testResults,
             modelColumns: result.updatedState.modelColumns ?? current.modelColumns,
             loadedSeeds: result.updatedState.loadedSeeds ?? current.loadedSeeds,
             buildSucceeded: result.updatedState.buildSucceeded ?? current.buildSucceeded,
             snapshotRunCounts: result.updatedState.snapshotRunCounts ?? current.snapshotRunCounts,
             snapshotClosedRows: result.updatedState.snapshotClosedRows ?? current.snapshotClosedRows,
+            lastRun: newLastRun ?? current.lastRun,
+            // A command finished: pin the DAG highlight to exactly what that
+            // command's selector resolves to — the same function the live
+            // preview uses, so typing and running stay consistent. Typing a
+            // new command overrides this via setDagSelection.
+            dagSelection: resolveSelection(input, current.files),
           }))
 
           const showTerm = parsed.command.type === 'show' && parsed.command.select.length === 1
@@ -335,6 +355,8 @@ export const useGameStore = create<StoreState>()(
 
       setBottomTab: (tab) => set({ bottomTab: tab }),
 
+      setDagSelection: (selection) => set({ dagSelection: selection }),
+
       loadLesson: async (id: number) => {
         const lesson = getLessonById(id)
         if (!lesson) return
@@ -365,6 +387,7 @@ export const useGameStore = create<StoreState>()(
           openTabs: filesToOpen.length > 0 ? new Set(filesToOpen) : new Set<string>(),
           ranModels: new Set<string>(),
           shownModels: new Set<string>(),
+          compiledModels: new Set<string>(),
           testResults: {},
           modelColumns: {},
           loadedSeeds: new Set<string>(),
@@ -374,6 +397,9 @@ export const useGameStore = create<StoreState>()(
           openedFiles: firstFile ? new Set([firstFile]) : new Set<string>(),
           currentLessonId: id,
           lastPreview: null,
+          lastRun: null,
+          dagSelection: null,
+          bottomTab: 'commands',
           running: true,
           seenPanels: nextSeen,
           newlyRevealedPanels: newlyRevealed,
@@ -438,6 +464,7 @@ export const useGameStore = create<StoreState>()(
           files: s.files,
           ranModels: s.ranModels,
           shownModels: s.shownModels,
+          compiledModels: s.compiledModels,
           testResults: s.testResults,
           modelColumns: s.modelColumns,
           loadedSeeds: s.loadedSeeds,
@@ -445,6 +472,7 @@ export const useGameStore = create<StoreState>()(
           snapshotRunCounts: s.snapshotRunCounts,
           snapshotClosedRows: s.snapshotClosedRows,
           openedFiles: s.openedFiles,
+          lastRun: s.lastRun,
         }
 
         let changed = false

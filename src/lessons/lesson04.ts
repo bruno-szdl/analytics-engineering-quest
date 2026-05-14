@@ -16,7 +16,7 @@ const lesson04: Lesson = {
   panels: ['lineage', 'files', 'warehouse'],
   concept: `By default, every dbt model becomes a **view** (a saved query that re-runs every time it's selected). Views are cheap to build but slow to query.
 
-When a model is queried frequently or is expensive to compute, you'll want a **table** (the result is physically stored). You switch the materialization with a config block at the top of the model:
+When a model is queried frequently or is expensive to compute, you'll want a **table** (the result is physically stored). You switch the **materialization** with a config block at the top of the model:
 
 \`\`\`sql
 {{ config(materialized='table') }}
@@ -24,7 +24,7 @@ When a model is queried frequently or is expensive to compute, you'll want a **t
 select ...
 \`\`\`
 
-Our project's marts get hit often by downstream consumers. Convert \`dim_customers\` to a table so reads are fast.`,
+Our project's marts get hit often by downstream consumers. Convert \`dim_customers\` and \`fct_revenue_by_customer\` to tables so reads are fast.`,
   initialFiles: {
     'models/stg_customers.sql': STG_CUSTOMERS_HARDCODED,
     'models/dim_customers.sql': DIM_CUSTOMERS_VIEW,
@@ -46,6 +46,12 @@ Our project's marts get hit often by downstream consumers. Convert \`dim_custome
       validate: (s) => modelMaterialization(s, 'dim_customers', 'table'),
     },
     {
+      id: 'table-fct',
+      prompt: "Do the same for `fct_revenue_by_customer` — it's a mart, so it should be a table too.",
+      hint: "Same config block at the top of `models/fct_revenue_by_customer.sql`: `{{ config(materialized='table') }}`.",
+      validate: (s) => modelMaterialization(s, 'fct_revenue_by_customer', 'table'),
+    },
+    {
       id: 'view',
       prompt: "Make sure `stg_customers` stays as a view (the default; no config needed).",
       hint: "Views are the default. As long as you haven't added a config block to stg_customers, it's already a view.",
@@ -53,8 +59,12 @@ Our project's marts get hit often by downstream consumers. Convert \`dim_custome
     },
     {
       id: 'run',
-      prompt: 'Run `dbt run` and watch both models build with their chosen materializations.',
-      validate: (s) => s.buildSucceeded && modelRan(s, 'dim_customers') && modelRan(s, 'stg_customers'),
+      prompt: 'Run `dbt run` and watch each model build with its chosen materialization.',
+      validate: (s) =>
+        s.buildSucceeded &&
+        modelRan(s, 'dim_customers') &&
+        modelRan(s, 'fct_revenue_by_customer') &&
+        modelRan(s, 'stg_customers'),
     },
   ],
   quiz: {

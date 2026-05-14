@@ -1,88 +1,124 @@
 import type { Lesson } from '../engine/types'
-import { seedLoaded, modelRan, modelRefs, hasModel } from '../engine/validators'
+import {
+  sourceDefined,
+  modelRan,
+  fileMatches,
+  lineageHasSourceEdge,
+} from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
   RAW_ORDERS_CSV,
-  COUNTRIES_CSV,
-  STG_CUSTOMERS_SOURCED,
-  STG_ORDERS_SOURCED,
+  STG_CUSTOMERS_HARDCODED,
+  STG_ORDERS_HARDCODED,
   DIM_CUSTOMERS_TABLE,
   INT_PAID_ORDERS,
   FCT_REVENUE_BY_CUSTOMER,
-  SOURCES_YML,
 } from './_canonical'
 
 const lesson06: Lesson = {
   id: 6,
-  title: 'Seeds',
-  concept: `**Seeds** are small CSV files checked into the repo (under \`seeds/\`) that dbt loads into the warehouse as tables. They're perfect for lookup data: country codes, currency rates, status mappings — anything that's small, slow-changing, and lives more naturally in version control than in a database.
+  title: 'Sources',
+  concept: `So far our staging models read directly from tables like \`raw.customers\` and \`raw.orders\`, using hardcoded schema-qualified names. That works, but it has problems: nothing tells dbt where those tables came from, the DAG doesn't show the real upstream system, and there's no place to attach tests or freshness checks on the raw side.
 
-Two things make seeds different from regular models:
+The fix: declare **sources** in a \`.yml\` file, then read them with \`{{ source('schema', 'table') }}\` in your models.
 
-1. They're loaded with \`dbt seed\`, **not** \`dbt run\`. The data lives in a CSV, not a SELECT.
-2. From a model's point of view, a seed *is* a model — you reference it with \`{{ ref('seed_name') }}\` just like any other.
+The YAML format looks like this:
 
-In this lesson the team has dropped a \`seeds/countries.csv\` lookup into the project. The \`countries\` table isn't in the warehouse yet — only the CSV is on disk. You'll seed it, then build a small \`dim_countries\` model on top.`,
+\`\`\`yaml
+version: 2
+
+sources:
+  - name: raw    # the schema
+    tables:
+      - name: customers
+      - name: orders
+\`\`\`
+
+In this lesson you'll declare both raw tables as sources, then refactor \`stg_customers\` and \`stg_orders\` to use \`source()\` instead of the hardcoded names.`,
   initialFiles: {
-    'models/sources.yml': SOURCES_YML,
-    'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
-    'models/stg_orders.sql': STG_ORDERS_SOURCED,
+    'models/sources.yml': `version: 2
+
+sources:
+  - name: raw
+    tables:
+      # add "- name: customers" and "- name: orders" entries below
+`,
+    'models/stg_customers.sql': STG_CUSTOMERS_HARDCODED,
+    'models/stg_orders.sql': STG_ORDERS_HARDCODED,
     'models/dim_customers.sql': DIM_CUSTOMERS_TABLE,
     'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
-    'seeds/countries.csv': COUNTRIES_CSV,
-    'models/dim_countries.sql': `-- Write a SELECT that reads from the countries seed using ref().
-`,
   },
-  openFiles: ['seeds/countries.csv', 'models/dim_countries.sql'],
+  openFiles: ['models/sources.yml', 'models/stg_customers.sql', 'models/stg_orders.sql'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
   },
   tasks: [
     {
-      id: 'inspect',
-      prompt: 'Skim `seeds/countries.csv` — it lives under `seeds/`, not `models/`. Notice the header row and five data rows.',
-      hint: 'Click the file in the file tree on the left. CSVs render as plain text — you should see one header row and five data rows.',
-      validate: (s) => s.openedFiles.has('seeds/countries.csv') || s.loadedSeeds.has('countries'),
+      id: 'declare-customers',
+      prompt: 'In `models/sources.yml`, add a `- name: customers` entry under the `raw` source\'s `tables:` list.',
+      hint: 'On a new line under `tables:`, write `      - name: customers` (six leading spaces, matching the example in the lesson).',
+      validate: (s) => sourceDefined(s, 'raw', 'customers'),
     },
     {
-      id: 'seed',
-      prompt: 'Run `dbt seed` in the terminal to load `countries.csv` into the warehouse.',
-      hint: 'Type `dbt seed` at the prompt and press Enter. Only `dbt seed` loads CSVs — `dbt run` will not.',
-      validate: (s) => seedLoaded(s, 'countries'),
+      id: 'declare-orders',
+      prompt: 'Add a second entry, `- name: orders`, right below `customers`.',
+      hint: 'Same indentation, one line below.',
+      validate: (s) => sourceDefined(s, 'raw', 'orders'),
     },
     {
-      id: 'ref',
-      prompt: 'In `models/dim_countries.sql`, write a SELECT that reads all columns from the `countries` seed using `{{ ref(\'countries\') }}`.',
-      hint: "Try: `select * from {{ ref('countries') }}`",
-      validate: (s) => hasModel(s, 'dim_countries') && modelRefs(s, 'dim_countries', 'countries'),
+      id: 'use-source-customers',
+      prompt: "Refactor `stg_customers.sql` so its FROM clause uses `{{ source('raw', 'customers') }}` instead of the hardcoded `raw.customers`.",
+      hint: "Change `from raw.customers` to `from {{ source('raw', 'customers') }}`.",
+      validate: (s) =>
+        lineageHasSourceEdge(s, 'raw', 'customers', 'stg_customers') &&
+        !fileMatches(s, 'models/stg_customers.sql', /\braw\.customers\b/),
+    },
+    {
+      id: 'use-source-orders',
+      prompt: "Refactor `stg_orders.sql` the same way, using `{{ source('raw', 'orders') }}`.",
+      hint: "Change `from raw.orders` to `from {{ source('raw', 'orders') }}`.",
+      validate: (s) =>
+        lineageHasSourceEdge(s, 'raw', 'orders', 'stg_orders') &&
+        !fileMatches(s, 'models/stg_orders.sql', /\braw\.orders\b/),
     },
     {
       id: 'run',
-      prompt: 'Now run `dbt run` to build `dim_countries` on top of the seed.',
-      validate: (s) => modelRan(s, 'dim_countries'),
-    },
-    {
-      id: 'show',
-      prompt: 'Preview the result with `dbt show --select dim_countries`.',
-      hint: 'You should see five rows — one per country in the CSV.',
-      validate: (s) => s.shownModels.has('dim_countries'),
+      prompt: 'Run `dbt run` and confirm the whole project still builds on top of the new sources.',
+      validate: (s) =>
+        modelRan(s, 'stg_customers') &&
+        modelRan(s, 'stg_orders') &&
+        modelRan(s, 'fct_revenue_by_customer'),
     },
   ],
   quiz: {
-    question: 'Which kind of data is a seed best suited for?',
+    question: 'When should you use `source()` vs `ref()`?',
     options: [
-      'Millions of rows of event data',
-      'Small, slow-changing reference data like country codes',
-      'Production transactions',
-      'Real-time streaming data',
+      'They are interchangeable',
+      "`source()` for raw warehouse tables you didn't build; `ref()` for dbt models",
+      '`source()` only in production',
+      '`ref()` only for table materializations',
     ],
     correctIndex: 1,
-    explanation: 'Seeds are CSVs in your repo — they go through code review and are tiny. Anything large or fast-changing belongs in your warehouse, not in a CSV.',
+    explanation: '`source()` points to inputs you don\'t own (raw landings, external systems). `ref()` points to other dbt models.',
+  },
+  goal: {
+    dagShape: {
+      nodes: [
+        { id: 'source.raw.customers', label: 'raw.customers', layer: 'source' },
+        { id: 'source.raw.orders', label: 'raw.orders', layer: 'source' },
+        { id: 'stg_customers', label: 'stg_customers', layer: 'staging' },
+        { id: 'stg_orders', label: 'stg_orders', layer: 'staging' },
+      ],
+      edges: [
+        { source: 'source.raw.customers', target: 'stg_customers' },
+        { source: 'source.raw.orders', target: 'stg_orders' },
+      ],
+    },
   },
   furtherReading: [
-    { label: 'Seeds', url: 'https://docs.getdbt.com/docs/build/seeds' },
+    { label: 'Sources', url: 'https://docs.getdbt.com/docs/build/sources' },
   ],
 }
 

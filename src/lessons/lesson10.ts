@@ -1,5 +1,5 @@
 import type { Lesson } from '../engine/types'
-import { modelRan } from '../engine/validators'
+import { fileMatches } from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
   RAW_ORDERS_CSV,
@@ -11,91 +11,131 @@ import {
   FCT_REVENUE_BY_CUSTOMER,
   DIM_COUNTRIES,
   SOURCES_YML,
-  SCHEMA_YML_L9,
 } from './_canonical'
 
 const lesson10: Lesson = {
   id: 10,
-  title: 'Project structure: staging, intermediate, marts',
-  concept: `The dbt community has a strong convention for organizing models into three layers:
+  title: 'Documentation',
+  concept: `Every model and column in your YAML can carry a \`description\`. These descriptions are **portable metadata**: once you write them in dbt, they travel:
 
-- **staging/**: one model per source table, light cleaning (renames, casts). Prefixed \`stg_\`.
-- **intermediate/**: joins and reusable building blocks. Prefixed \`int_\`.
-- **marts/**: business-facing tables (often dimensional). Prefixed \`dim_\` or \`fct_\`.
+- they can surface in your data platform / warehouse UI, right next to the column
+- \`dbt docs generate\` turns them into a static HTML documentation site
+- they populate the catalog in the dbt platform
+- custom tools and third-party data catalogs can read them straight from dbt's metadata
 
-Folders aren't enforced by dbt, but following the convention makes any dbt project instantly readable. Until now our project has kept everything flat in \`models/\`. In this lesson you'll refactor it into the canonical three-layer layout.
+(This tool doesn't run \`dbt docs generate\`, but the descriptions you write below are exactly what feeds all of the above.)
 
-Right-click a file (or hover and click the rename icon) to move it. dbt doesn't care about the folder — it identifies models by filename — so this is purely organizational.`,
+Good documentation isn't about completeness. It's about the *non-obvious* bits. Compare:
+
+- ❌ \`customer_id\`: *"The customer id"* (the name already says this)
+- ✅ \`customer_id\`: *"FK to stg_customers.id; null for guest checkouts"* (semantics + nullability)
+
+If a name is self-explanatory, you don't need to describe it. Spend your words on what the name *can't* tell you: what a status value means, why a column is nullable, which team owns the model.
+
+The project already has data tests on \`stg_customers\` and \`stg_orders\`. Now let's add descriptions where they earn their keep.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
-    'models/schema.yml': SCHEMA_YML_L9,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
     'models/stg_orders.sql': STG_ORDERS_SOURCED,
-    'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/dim_customers.sql': DIM_CUSTOMERS_TABLE,
-    'models/dim_countries.sql': DIM_COUNTRIES,
+    'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
+    'models/dim_countries.sql': DIM_COUNTRIES,
     'seeds/countries.csv': COUNTRIES_CSV,
+    // Same as L8 but with empty description fields prefilled at model + status.
+    'models/schema.yml': `version: 2
+
+models:
+  - name: stg_customers
+    description: ""
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+      - name: email
+        data_tests:
+          - not_null
+  - name: stg_orders
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: id
+      - name: status
+        description: ""
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'refunded', 'pending']
+`,
   },
+  openFiles: ['models/schema.yml'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
     countries: COUNTRIES_CSV,
   },
+  preRanModels: [
+    'stg_customers',
+    'stg_orders',
+    'dim_customers',
+    'int_paid_orders',
+    'fct_revenue_by_customer',
+    'dim_countries',
+  ],
   tasks: [
     {
-      id: 'move-staging',
-      prompt: 'Move both `stg_customers.sql` and `stg_orders.sql` into a new `models/staging/` folder. (Rename each file to `models/staging/<name>.sql`.)',
-      hint: 'Right-click a file (or hover for the rename icon) and change the path to `models/staging/stg_customers.sql`.',
-      validate: (s) =>
-        Boolean(s.files['models/staging/stg_customers.sql']) &&
-        Boolean(s.files['models/staging/stg_orders.sql']) &&
-        !s.files['models/stg_customers.sql'] &&
-        !s.files['models/stg_orders.sql'],
+      id: 'model-desc',
+      prompt: 'Write a non-empty description on the `stg_customers` model in `schema.yml`.',
+      hint: 'Replace the empty `""` after `description:` on the model with a short sentence, e.g. `"One row per customer, cleaned from raw.customers."`',
+      validate: (s) => {
+        const yml = s.files['models/schema.yml'] ?? ''
+        const m = yml.match(/- name: stg_customers[\s\S]*?description:\s*"([^"]+)"/)
+        return Boolean(m && m[1].trim().length >= 5)
+      },
     },
     {
-      id: 'move-intermediate',
-      prompt: 'Move `int_paid_orders.sql` into `models/intermediate/`.',
-      validate: (s) =>
-        Boolean(s.files['models/intermediate/int_paid_orders.sql']) &&
-        !s.files['models/int_paid_orders.sql'],
+      id: 'col-desc',
+      prompt: 'Write a description on the `status` column explaining what the allowed values mean.',
+      hint: "Something like: `\"Order lifecycle: paid, refunded, or pending.\"`",
+      validate: (s) => {
+        const yml = s.files['models/schema.yml'] ?? ''
+        const m = yml.match(/- name: status[\s\S]*?description:\s*"([^"]+)"/)
+        return Boolean(m && m[1].trim().length >= 5)
+      },
     },
     {
-      id: 'move-marts',
-      prompt: 'Move `dim_customers.sql`, `dim_countries.sql`, and `fct_revenue_by_customer.sql` into `models/marts/`.',
-      hint: 'Three renames. dbt resolves models by name, not path — refs and tests keep working unchanged.',
+      id: 'mart-desc',
+      prompt: 'Add a new entry under `models:` for `fct_revenue_by_customer` with a description (no columns block needed).',
+      hint: "At the bottom of `schema.yml`, add:\n```\n  - name: fct_revenue_by_customer\n    description: \"Total paid revenue per customer.\"\n```",
       validate: (s) =>
-        Boolean(s.files['models/marts/dim_customers.sql']) &&
-        Boolean(s.files['models/marts/dim_countries.sql']) &&
-        Boolean(s.files['models/marts/fct_revenue_by_customer.sql']) &&
-        !s.files['models/dim_customers.sql'] &&
-        !s.files['models/dim_countries.sql'] &&
-        !s.files['models/fct_revenue_by_customer.sql'],
-    },
-    {
-      id: 'run',
-      prompt: 'Run `dbt run` and verify every model still builds after the reorg.',
-      hint: 'Nothing about the SQL needs to change — only the file paths moved.',
-      validate: (s) =>
-        modelRan(s, 'stg_customers') &&
-        modelRan(s, 'stg_orders') &&
-        modelRan(s, 'int_paid_orders') &&
-        modelRan(s, 'fct_revenue_by_customer'),
+        fileMatches(
+          s,
+          'models/schema.yml',
+          /- name:\s*fct_revenue_by_customer[\s\S]*?description:\s*"[^"]{5,}"/,
+        ),
     },
   ],
   quiz: {
-    question: 'A new teammate sees a model called `int_active_users`. What should they expect?',
+    question: "What's the best column description?",
     options: [
-      'A raw source table',
-      'A staging model with light renames',
-      'A reusable joined/aggregated model, not yet business-facing',
-      'A dashboard',
+      '"The customer id"',
+      '"customer_id"',
+      '"FK to stg_customers.id; nullable for guest checkouts"',
+      'Leave it blank',
     ],
     correctIndex: 2,
-    explanation: 'The `int_` prefix signals intermediate logic: joins, aggregations, building blocks consumed by marts.',
+    explanation: 'Descriptions earn their keep by capturing what the name alone cannot: semantics, nullability, ownership.',
   },
   furtherReading: [
-    { label: 'How we structure dbt projects', url: 'https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview' },
+    { label: 'Documentation', url: 'https://docs.getdbt.com/docs/build/documentation' },
   ],
 }
 

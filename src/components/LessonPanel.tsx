@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../store/gameStore'
 import { getLessonById, getLastLessonId, taskKey } from '../lessons'
@@ -14,6 +14,9 @@ export default function LessonPanel() {
   const loadLesson = useGameStore((s) => s.loadLesson)
 
   const { t } = useTranslation()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { scrollRef.current?.scrollTo(0, 0) }, [currentLessonId])
+
   const rawLesson = getLessonById(currentLessonId)
   const lesson = useLocalizedLesson(rawLesson ?? { id: 0, title: '', concept: '', initialFiles: {}, tasks: [] })
   if (!rawLesson) return null
@@ -50,7 +53,7 @@ export default function LessonPanel() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {/* Concept */}
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
           <Markdownish text={lesson.concept} />
@@ -449,16 +452,53 @@ function QuizBlock({
 }
 
 /**
- * Renders text with minimal markdown: **bold**, `code`, and paragraph breaks.
- * Anything fancier (lists, code blocks) is rendered with light styling.
+ * Splits concept text into blocks, treating fenced code (```...```) as an
+ * atomic unit even when blank lines appear inside the fence.
+ */
+function splitBlocks(text: string): string[] {
+  const blocks: string[] = []
+  const lines = text.split('\n')
+  let current: string[] = []
+  let inFence = false
+
+  const flush = () => {
+    const s = current.join('\n').trim()
+    if (s) blocks.push(s)
+    current = []
+  }
+
+  for (const line of lines) {
+    if (!inFence && line.startsWith('```')) {
+      flush()
+      inFence = true
+      current.push(line)
+    } else if (inFence) {
+      current.push(line)
+      if (line.startsWith('```') && current.length > 1) {
+        flush()
+        inFence = false
+      }
+    } else if (line === '') {
+      flush()
+    } else {
+      current.push(line)
+    }
+  }
+  flush()
+  return blocks
+}
+
+/**
+ * Renders text with minimal markdown: **bold**, `code`, fenced code blocks,
+ * `- ` bullet lists, and paragraph breaks.
  */
 function Markdownish({ text }: { text: string }) {
-  const blocks = text.split(/\n\n+/)
+  const blocks = splitBlocks(text)
   return (
     <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.65 }}>
       {blocks.map((block, i) => {
         if (block.startsWith('```')) {
-          const code = block.replace(/^```\w*\n?/, '').replace(/```$/, '')
+          const code = block.replace(/^```\w*\n?/, '').replace(/\n?```$/, '')
           return (
             <pre
               key={i}
@@ -476,6 +516,31 @@ function Markdownish({ text }: { text: string }) {
             >
               {code}
             </pre>
+          )
+        }
+        const lines = block.split('\n')
+        if (lines.every(l => l.startsWith('- '))) {
+          return (
+            <div key={i} style={{ margin: '8px 0', paddingLeft: '12px' }}>
+              {lines.map((l, j) => (
+                <div key={j} style={{ display: 'flex', gap: '8px', marginBottom: '3px' }}>
+                  <span style={{ color: 'var(--color-accent-orange)', flexShrink: 0 }}>→</span>
+                  <span>{renderInline(l.slice(2))}</span>
+                </div>
+              ))}
+            </div>
+          )
+        }
+        if (lines.every(l => /^\d+\.\s/.test(l))) {
+          return (
+            <div key={i} style={{ margin: '8px 0', paddingLeft: '12px' }}>
+              {lines.map((l, j) => (
+                <div key={j} style={{ display: 'flex', gap: '8px', marginBottom: '3px' }}>
+                  <span style={{ color: 'var(--color-accent-orange)', flexShrink: 0 }}>→</span>
+                  <span>{renderInline(l.replace(/^\d+\.\s/, ''))}</span>
+                </div>
+              ))}
+            </div>
           )
         }
         return (

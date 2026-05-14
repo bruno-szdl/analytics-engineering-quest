@@ -1,9 +1,10 @@
 import type { Lesson } from '../engine/types'
 import {
-  sourceDefined,
+  modelSqlMatches,
+  onlyModelsRan,
+  lastRunSelected,
   modelRan,
-  fileMatches,
-  lineageHasSourceEdge,
+  buildSucceeded,
 } from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
@@ -17,107 +18,86 @@ import {
 
 const lesson05: Lesson = {
   id: 5,
-  title: 'Sources',
-  concept: `So far our staging models read directly from tables like \`raw.customers\` and \`raw.orders\` — hardcoded schema-qualified names. That works, but it has problems: nothing tells dbt where those tables came from, the DAG doesn't show the real upstream system, and there's no place to attach tests or freshness checks on the raw side.
+  title: 'Selecting models',
+  panels: ['lineage', 'files', 'warehouse'],
+  concept: `So far every command you've run has touched the **whole project**. \`dbt run\` rebuilds every model, every time. On a real project with hundreds of models that's slow — and usually unnecessary. While you're iterating on a single model, you only want to rebuild *that* model.
 
-The fix: declare **sources** in a \`.yml\` file, then read them with \`{{ source('schema', 'table') }}\` in your models.
+That's what the \`--select\` flag is for:
 
-The YAML format looks like this:
-
-\`\`\`yaml
-version: 2
-sources:
-  - name: raw           # the schema / logical group
-    tables:
-      - name: customers
-      - name: orders
+\`\`\`bash
+dbt run --select stg_customers
 \`\`\`
 
-In this lesson you'll declare both raw tables as sources, then refactor \`stg_customers\` and \`stg_orders\` to use \`source()\` instead of the hardcoded names.`,
-  initialFiles: {
-    'models/sources.yml': `version: 2
+This builds only \`stg_customers\` and nothing else. There's a shorthand too — \`-s\` means exactly the same thing:
 
-sources:
-  - name: raw
-    tables:
-      # add "- name: customers" and "- name: orders" entries below
-`,
+\`\`\`bash
+dbt run -s stg_customers
+\`\`\`
+
+Watch the lineage graph as you type a selector: the models that *aren't* selected fade out, so you can see at a glance what a command will touch before you run it.
+
+In this lesson the project is already built. You'll make a small change to one model, rebuild just that model, and then do a full \`dbt run\` to put everything back in sync.`,
+  initialFiles: {
     'models/stg_customers.sql': STG_CUSTOMERS_HARDCODED,
     'models/stg_orders.sql': STG_ORDERS_HARDCODED,
     'models/dim_customers.sql': DIM_CUSTOMERS_TABLE,
     'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
   },
-  openFiles: ['models/sources.yml', 'models/stg_customers.sql', 'models/stg_orders.sql'],
+  openFiles: ['models/stg_customers.sql'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
   },
+  preRanModels: [
+    'stg_customers',
+    'stg_orders',
+    'dim_customers',
+    'int_paid_orders',
+    'fct_revenue_by_customer',
+  ],
   tasks: [
     {
-      id: 'declare-customers',
-      prompt: 'In `models/sources.yml`, add a `- name: customers` entry under the `raw` source\'s `tables:` list.',
-      hint: 'On a new line under `tables:`, write `      - name: customers` (six leading spaces, matching the example in the lesson).',
-      validate: (s) => sourceDefined(s, 'raw', 'customers'),
+      id: 'edit-stg',
+      prompt: "In `models/stg_customers.sql`, remove the `country` column from the SELECT list — nothing downstream uses it.",
+      hint: "Delete the `country,` line (and the trailing comma on the line above it if needed) so the model selects only `id`, `name`, and `email`.",
+      validate: (s) => !modelSqlMatches(s, 'stg_customers', /\bcountry\b/),
     },
     {
-      id: 'declare-orders',
-      prompt: 'Add a second entry, `- name: orders`, right below `customers`.',
-      hint: 'Same indentation, one line below.',
-      validate: (s) => sourceDefined(s, 'raw', 'orders'),
+      id: 'select-one',
+      prompt: 'Rebuild just that model: run `dbt run --select stg_customers`. Notice the graph dims everything else as you type.',
+      hint: 'Type `dbt run --select stg_customers` at the prompt. Only one model should build.',
+      validate: (s) => onlyModelsRan(s, ['stg_customers']),
     },
     {
-      id: 'use-source-customers',
-      prompt: "Refactor `stg_customers.sql` so its FROM clause uses `{{ source('raw', 'customers') }}` instead of the hardcoded `raw.customers`.",
-      hint: "Change `from raw.customers` to `from {{ source('raw', 'customers') }}`.",
+      id: 'select-short-flag',
+      prompt: 'Now use the `-s` shorthand to target a different model: run `dbt run -s dim_customers`.',
+      hint: '`-s` is just an alias for `--select`. `dbt run -s dim_customers` rebuilds only `dim_customers`.',
+      validate: (s) => lastRunSelected(s, ['dim_customers']),
+    },
+    {
+      id: 'run-all',
+      prompt: "Finally, run a plain `dbt run` (no `--select`) to rebuild the whole project and confirm everything is consistent again.",
+      hint: "When you genuinely want every model rebuilt, drop the flag entirely: `dbt run`.",
       validate: (s) =>
-        lineageHasSourceEdge(s, 'raw', 'customers', 'stg_customers') &&
-        !fileMatches(s, 'models/stg_customers.sql', /\braw\.customers\b/),
-    },
-    {
-      id: 'use-source-orders',
-      prompt: "Refactor `stg_orders.sql` the same way, using `{{ source('raw', 'orders') }}`.",
-      hint: "Change `from raw.orders` to `from {{ source('raw', 'orders') }}`.",
-      validate: (s) =>
-        lineageHasSourceEdge(s, 'raw', 'orders', 'stg_orders') &&
-        !fileMatches(s, 'models/stg_orders.sql', /\braw\.orders\b/),
-    },
-    {
-      id: 'run',
-      prompt: 'Run `dbt run` and confirm the whole project still builds on top of the new sources.',
-      validate: (s) =>
+        buildSucceeded(s) &&
         modelRan(s, 'stg_customers') &&
-        modelRan(s, 'stg_orders') &&
         modelRan(s, 'fct_revenue_by_customer'),
     },
   ],
   quiz: {
-    question: 'When should you use `source()` vs `ref()`?',
+    question: 'What does `dbt run --select stg_customers` do?',
     options: [
-      'They are interchangeable',
-      "`source()` for raw warehouse tables you didn't build; `ref()` for dbt models",
-      '`source()` only in production',
-      '`ref()` only for table materializations',
+      'Runs every model except stg_customers',
+      'Builds only the stg_customers model',
+      'Runs stg_customers and all of its downstream models',
+      'Previews the rows in stg_customers',
     ],
     correctIndex: 1,
-    explanation: '`source()` points to inputs you don\'t own (raw landings, external systems). `ref()` points to other dbt models.',
-  },
-  goal: {
-    dagShape: {
-      nodes: [
-        { id: 'source.raw.customers', label: 'raw.customers', layer: 'source' },
-        { id: 'source.raw.orders', label: 'raw.orders', layer: 'source' },
-        { id: 'stg_customers', label: 'stg_customers', layer: 'staging' },
-        { id: 'stg_orders', label: 'stg_orders', layer: 'staging' },
-      ],
-      edges: [
-        { source: 'source.raw.customers', target: 'stg_customers' },
-        { source: 'source.raw.orders', target: 'stg_orders' },
-      ],
-    },
+    explanation: '`--select stg_customers` narrows the run to exactly that one model. `-s` is the shorthand for the same flag.',
   },
   furtherReading: [
-    { label: 'Sources', url: 'https://docs.getdbt.com/docs/build/sources' },
+    { label: 'Node selection syntax', url: 'https://docs.getdbt.com/reference/node-selection/syntax' },
   ],
 }
 

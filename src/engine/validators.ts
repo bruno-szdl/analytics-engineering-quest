@@ -38,6 +38,11 @@ export function modelShown(state: GameState, name: string): boolean {
   return state.shownModels.has(name)
 }
 
+/** True if the learner ran `dbt compile` covering this model in the current lesson. */
+export function modelCompiled(state: GameState, name: string): boolean {
+  return state.compiledModels.has(name)
+}
+
 export function testPassed(
   state: GameState,
   modelName: string,
@@ -147,6 +152,41 @@ export function modelSqlMatches(
   const flags = pattern.flags.includes('i') ? pattern.flags : pattern.flags + 'i'
   const re = new RegExp(pattern.source, flags)
   return re.test(content)
+}
+
+/** True if the most recent run/build selected EXACTLY the given model names
+ *  (set equality) — i.e. the learner targeted just those, not the whole project. */
+export function onlyModelsRan(state: GameState, names: string[]): boolean {
+  const lr = state.lastRun
+  if (!lr || (lr.command !== 'run' && lr.command !== 'build')) return false
+  if (!lr.usedSelect) return false
+  const got = new Set(lr.selectedModels)
+  return got.size === names.length && names.every((n) => got.has(n))
+}
+
+/** True if the most recent command used `--select` and its resolved set
+ *  contains every given model name. */
+export function lastRunSelected(state: GameState, names: string[]): boolean {
+  const lr = state.lastRun
+  if (!lr || !lr.usedSelect) return false
+  const got = new Set(lr.selectedModels)
+  return names.every((n) => got.has(n))
+}
+
+/** True if the most recent command used a `model+` (downstream) graph operator.
+ *  When `model` is given, also requires that model to be in the selection. */
+export function usedDownstreamOperator(state: GameState, model?: string): boolean {
+  const lr = state.lastRun
+  if (!lr || !lr.usedDownstream) return false
+  return model ? lr.selectedModels.includes(model) : true
+}
+
+/** True if the most recent command used a `+model` (upstream) graph operator.
+ *  When `model` is given, also requires that model to be in the selection. */
+export function usedUpstreamOperator(state: GameState, model?: string): boolean {
+  const lr = state.lastRun
+  if (!lr || !lr.usedUpstream) return false
+  return model ? lr.selectedModels.includes(model) : true
 }
 
 /** True if a file at `path` exists and its (comments-stripped where applicable)

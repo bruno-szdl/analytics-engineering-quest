@@ -99,6 +99,14 @@ export default function IntroPage() {
           By the end you'll be ready to open any real dbt project and contribute on day one.
         </p>
 
+        <SectionHeader>Before you start</SectionHeader>
+        <p style={{ margin: '0 0 16px' }}>
+          You only need to know basic SQL —{' '}
+          <code>SELECT</code>, <code>WHERE</code>, <code>GROUP BY</code>. That's it.
+          You don't need a database, a dbt installation, or command-line experience.
+          Everything runs in your browser.
+        </p>
+
         <div style={{ marginTop: '40px' }}>
           <button
             onClick={() => void loadLesson(1)}

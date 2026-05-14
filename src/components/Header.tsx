@@ -196,8 +196,6 @@ function LessonSelector({ compact = false }: { compact?: boolean }) {
             borderRadius: '8px',
             padding: '6px',
             width: '300px',
-            maxHeight: '460px',
-            overflowY: 'auto',
             zIndex: 100,
             boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
           }}

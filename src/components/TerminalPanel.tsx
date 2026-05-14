@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useGameStore } from '../store/gameStore'
+import { resolveSelection } from '../engine/runner'
 import type { TerminalLine } from '../store/gameStore'
 
 const COLOR: Record<string, string> = {
@@ -20,6 +21,7 @@ interface TerminalPanelProps {
 export default function TerminalPanel({ embedded = false }: TerminalPanelProps) {
   const terminalHistory = useGameStore((s) => s.terminalHistory)
   const runCommand = useGameStore((s) => s.runCommand)
+  const setDagSelection = useGameStore((s) => s.setDagSelection)
 
   const [input, setInput] = useState('')
   const [cmdHistory, setCmdHistory] = useState<string[]>([])
@@ -27,15 +29,41 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
 
   const outputRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const el = outputRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [terminalHistory])
 
+  useEffect(() => () => {
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+  }, [])
+
+  // Debounced live DAG preview: resolve whatever selector is being typed and
+  // highlight the matching nodes before the command is even run.
+  const schedulePreview = useCallback(
+    (value: string) => {
+      if (previewTimer.current) clearTimeout(previewTimer.current)
+      previewTimer.current = setTimeout(() => {
+        setDagSelection(resolveSelection(value, useGameStore.getState().files))
+      }, 120)
+    },
+    [setDagSelection]
+  )
+
+  const updateInput = useCallback(
+    (value: string) => {
+      setInput(value)
+      schedulePreview(value)
+    },
+    [schedulePreview]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
+        if (previewTimer.current) clearTimeout(previewTimer.current)
         const cmd = input.trim()
         if (cmd) {
           runCommand(cmd)
@@ -47,15 +75,15 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
         e.preventDefault()
         const next = Math.min(historyIdx + 1, cmdHistory.length - 1)
         setHistoryIdx(next)
-        if (next >= 0) setInput(cmdHistory[next])
+        if (next >= 0) updateInput(cmdHistory[next])
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
         const next = Math.max(historyIdx - 1, -1)
         setHistoryIdx(next)
-        setInput(next === -1 ? '' : cmdHistory[next])
+        updateInput(next === -1 ? '' : cmdHistory[next])
       }
     },
-    [input, cmdHistory, historyIdx, runCommand]
+    [input, cmdHistory, historyIdx, runCommand, updateInput]
   )
 
   return (
@@ -134,7 +162,7 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
         <input
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => updateInput(e.target.value)}
           onKeyDown={handleKeyDown}
           autoFocus
           spellCheck={false}

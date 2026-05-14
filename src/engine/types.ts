@@ -1,10 +1,27 @@
 import type { NodeLayer } from './dagBuilder'
+import type { CommandType } from './commandParser'
+
+/** What the most recent run/build/compile/show invocation actually selected.
+ *  Lets task validators tell "ran only X" from "ran the whole project". */
+export interface LastRunInfo {
+  command: CommandType
+  /** Model names the command's selectors resolved to. */
+  selectedModels: string[]
+  /** True if the command used `--select` / `-s` at all. */
+  usedSelect: boolean
+  /** True if any selector term used the `+model` upstream operator. */
+  usedUpstream: boolean
+  /** True if any selector term used the `model+` downstream operator. */
+  usedDownstream: boolean
+}
 
 export interface GameState {
   files: Record<string, string>
   ranModels: Set<string>
   testResults: Record<string, 'pass' | 'fail' | 'untested'>
   shownModels: Set<string>
+  /** Models the learner has compiled via `dbt compile` in the current lesson. */
+  compiledModels: Set<string>
   /** Columns observed the last time each model was successfully run. */
   modelColumns: Record<string, string[]>
   /** Seeds that have been loaded via `dbt seed` in the current lesson. */
@@ -17,6 +34,8 @@ export interface GameState {
   snapshotClosedRows: Record<string, number>
   /** Files the learner has opened in the editor this lesson. */
   openedFiles: Set<string>
+  /** Details of the most recent run/build/compile/show command, or null if none yet. */
+  lastRun: LastRunInfo | null
 }
 
 export interface GoalDagShape {

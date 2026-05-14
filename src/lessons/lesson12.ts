@@ -1,5 +1,11 @@
 import type { Lesson } from '../engine/types'
-import { buildSucceeded, modelRan, allTestsPass } from '../engine/validators'
+import {
+  lastRunSelected,
+  usedDownstreamOperator,
+  usedUpstreamOperator,
+  modelSqlMatches,
+  buildSucceeded,
+} from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
   RAW_ORDERS_CSV,
@@ -12,29 +18,36 @@ import {
   DIM_COUNTRIES,
   SOURCES_YML,
   SCHEMA_YML_L9,
-  SINGULAR_TEST_NO_FUTURE,
 } from './_canonical'
 
 const lesson12: Lesson = {
   id: 12,
-  title: 'Putting it all together: dbt build',
-  concept: `Take a look around. This is the project you've been building lesson by lesson:
+  title: 'Selecting subsets: unions & graph operators',
+  panels: ['lineage', 'files', 'warehouse'],
+  concept: `In lesson 5 you selected a single model. Now that the project is organized into staging, intermediate, and marts, you'll often want to select a *subset* — and dbt's selector syntax makes that precise.
 
-- A canonical \`raw\` source declared in YAML
-- Two staging models (\`stg_customers\`, \`stg_orders\`) reading from it
-- An intermediate filter (\`int_paid_orders\`) and three marts (\`dim_customers\`, \`dim_countries\`, \`fct_revenue_by_customer\`)
-- A \`countries\` seed feeding \`dim_countries\`
-- Generic tests (\`not_null\`, \`unique\`, \`relationships\`, \`accepted_values\`), descriptions, and one singular test
-- All laid out in the canonical \`staging/intermediate/marts\` structure
+**Unions.** List several models, separated by spaces, to run all of them:
 
-\`dbt build\` is the one command you'll run most in real projects. It walks the DAG once and, for each node:
+\`\`\`bash
+dbt run --select stg_customers stg_orders
+\`\`\`
 
-1. Builds the model (or loads the seed, or runs the snapshot)
-2. Immediately runs every test attached to it
+**Graph operators.** A \`+\` pulls in everything connected through the DAG:
 
-If a test fails, downstream models that depend on the bad data are skipped. That's the safety net: no broken upstream data quietly poisons a dashboard.
+- \`+model\` — the model **and everything upstream** of it (its ancestors)
+- \`model+\` — the model **and everything downstream** of it (its descendants)
 
-Run \`dbt build\` and watch the whole project go.`,
+So \`+fct_revenue_by_customer\` rebuilds that mart *and* every model it depends on, in dependency order.
+
+**Why \`model+\` matters.** Suppose you fix a bug in \`stg_customers\`. Rebuilding *only* \`stg_customers\` isn't enough — the marts built on top of it still hold the old, wrong data. The right move is:
+
+\`\`\`bash
+dbt build --select stg_customers+
+\`\`\`
+
+\`dbt build\` runs **and tests** each model. Combined with \`stg_customers+\`, it rebuilds the fixed model plus everything downstream *and* re-runs their tests — so bad data can't quietly flow through to a dashboard.
+
+Watch the lineage graph as you type each selector below: it lights up exactly the models the command will touch.`,
   initialFiles: {
     'models/staging/_sources.yml': SOURCES_YML,
     'models/staging/_schema.yml': SCHEMA_YML_L9,
@@ -44,51 +57,63 @@ Run \`dbt build\` and watch the whole project go.`,
     'models/marts/dim_customers.sql': DIM_CUSTOMERS_TABLE,
     'models/marts/dim_countries.sql': DIM_COUNTRIES,
     'models/marts/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
-    'tests/no_future_signups.sql': SINGULAR_TEST_NO_FUTURE,
     'seeds/countries.csv': COUNTRIES_CSV,
   },
+  openFiles: ['models/staging/stg_customers.sql'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
+    countries: COUNTRIES_CSV,
   },
+  preRanModels: [
+    'stg_customers',
+    'stg_orders',
+    'int_paid_orders',
+    'dim_customers',
+    'dim_countries',
+    'fct_revenue_by_customer',
+  ],
   tasks: [
     {
-      id: 'seed',
-      prompt: 'First, run `dbt seed` to load `countries.csv` into the warehouse.',
-      hint: 'A `dbt build` includes seeds, but doing it explicitly here keeps the steps separable.',
-      validate: (s) => s.loadedSeeds.has('countries'),
+      id: 'union',
+      prompt: 'Rebuild both staging models in one command: run `dbt run --select stg_customers stg_orders`.',
+      hint: 'Separate the two model names with a space — that selects the union of both.',
+      validate: (s) => lastRunSelected(s, ['stg_customers', 'stg_orders']),
     },
     {
-      id: 'build',
-      prompt: 'Now run `dbt build`. It will materialize every model and run every test in DAG order.',
-      hint: 'A single command does the whole thing: `dbt build`.',
-      validate: (s) => buildSucceeded(s),
-    },
-    {
-      id: 'fct',
-      prompt: 'Verify `fct_revenue_by_customer` built and passed.',
-      validate: (s) => modelRan(s, 'fct_revenue_by_customer'),
-    },
-    {
-      id: 'tests',
-      prompt: 'Verify every model has passing tests.',
+      id: 'fix-and-downstream',
+      prompt: "Pretend you found a data issue. Add `where email is not null` to `models/staging/stg_customers.sql`, then run `dbt build --select stg_customers+` to rebuild and re-test that model plus everything downstream.",
+      hint: "Add `where email is not null` as the last line of `stg_customers.sql`. Then run `dbt build --select stg_customers+` — the trailing `+` pulls in every downstream model.",
       validate: (s) =>
-        allTestsPass(s, 'stg_customers') && allTestsPass(s, 'stg_orders'),
+        modelSqlMatches(s, 'stg_customers', /where\s+email\s+is\s+not\s+null/i) &&
+        usedDownstreamOperator(s, 'stg_customers'),
+    },
+    {
+      id: 'upstream',
+      prompt: 'Now rebuild a mart and everything it depends on: run `dbt run --select +fct_revenue_by_customer`.',
+      hint: 'A leading `+` selects the model and all of its ancestors: `+fct_revenue_by_customer`.',
+      validate: (s) => usedUpstreamOperator(s, 'fct_revenue_by_customer'),
+    },
+    {
+      id: 'build-all',
+      prompt: 'Finally, run a plain `dbt build` to build and test the entire project in one go.',
+      hint: 'No selector this time — `dbt build` walks the whole DAG.',
+      validate: (s) => buildSucceeded(s),
     },
   ],
   quiz: {
-    question: 'Why prefer `dbt build` over `dbt run` + `dbt test` separately?',
+    question: 'You just fixed a bug in `stg_customers`. Which command rebuilds it *and* re-tests everything that depends on it?',
     options: [
-      "It's shorter to type",
-      'It runs tests in DAG order and skips downstream models when upstream tests fail',
-      "It's the only way to use sources",
-      'It generates documentation',
+      'dbt run --select stg_customers',
+      'dbt build --select +stg_customers',
+      'dbt build --select stg_customers+',
+      'dbt test --select stg_customers',
     ],
-    correctIndex: 1,
-    explanation: '`dbt build` interleaves tests with builds so bad data is caught the moment it appears, before downstream models consume it.',
+    correctIndex: 2,
+    explanation: '`stg_customers+` selects the model and everything downstream; `dbt build` runs and tests each one — so the fix propagates and bad data is caught.',
   },
   furtherReading: [
-    { label: 'dbt build command', url: 'https://docs.getdbt.com/reference/commands/build' },
+    { label: 'Graph operators', url: 'https://docs.getdbt.com/reference/node-selection/graph-operators' },
   ],
 }
 

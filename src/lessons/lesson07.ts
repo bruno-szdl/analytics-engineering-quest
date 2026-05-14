@@ -1,9 +1,5 @@
 import type { Lesson } from '../engine/types'
-import {
-  testDefinitionsInclude,
-  allTestsPass,
-  fileMatches,
-} from '../engine/validators'
+import { seedLoaded, modelRan, modelRefs, hasModel } from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
   RAW_ORDERS_CSV,
@@ -13,41 +9,20 @@ import {
   DIM_CUSTOMERS_TABLE,
   INT_PAID_ORDERS,
   FCT_REVENUE_BY_CUSTOMER,
-  DIM_COUNTRIES,
   SOURCES_YML,
 } from './_canonical'
 
 const lesson07: Lesson = {
   id: 7,
-  title: 'Data tests: not_null & unique',
-  concept: `dbt has two built-in **data tests** for almost every column you'll write: **not_null** and **unique**. They're declared in a YAML file alongside your model and run with \`dbt test\`.
+  title: 'Seeds',
+  concept: `**Seeds** are small CSV files checked into the repo (under \`seeds/\`) that dbt loads into the warehouse as tables. They're perfect for lookup data: country codes, currency rates, status mappings. Anything small, slow-changing, and more at home in version control than in a database.
 
-Catching a null or duplicate early (before it breaks a downstream join or doubles up a metric) is the cheapest data-quality win you'll ever get.
+Two things make seeds different from regular models:
 
-Data tests live in a \`schema.yml\` file next to your models. The structure looks like this:
+1. They're loaded with \`dbt seed\`, **not** \`dbt run\`. The data lives in a CSV, not a SELECT.
+2. From a model's point of view, a seed *is* a model: you reference it with \`{{ ref('seed_name') }}\` just like any other.
 
-\`\`\`yaml
-version: 2
-
-models:
-  - name: stg_customers
-    columns:
-      - name: id
-        data_tests:
-          - not_null
-          - unique
-      - name: email
-        data_tests:
-          - not_null
-\`\`\`
-
-A few things to notice:
-
-- Each test name goes on its own line, prefixed with \`- \` (dash + space).
-- Indentation matters in YAML — \`data_tests:\` must align under its column, and the test entries must indent further.
-- You can put as many data tests as you want on a column, and as many columns as you want under a model.
-
-We've added an empty \`schema.yml\` to the project, with \`stg_customers.id\` set up but its \`data_tests:\` list empty. Your job: add \`not_null\` and \`unique\` to it, then add a separate \`email\` column with \`not_null\`, then run \`dbt test\`.`,
+In this lesson the team has dropped a \`seeds/countries.csv\` lookup into the project. The \`countries\` table isn't in the warehouse yet; only the CSV is on disk. You'll seed it, then build a small \`dim_countries\` model on top.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
@@ -55,73 +30,59 @@ We've added an empty \`schema.yml\` to the project, with \`stg_customers.id\` se
     'models/dim_customers.sql': DIM_CUSTOMERS_TABLE,
     'models/int_paid_orders.sql': INT_PAID_ORDERS,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
-    'models/dim_countries.sql': DIM_COUNTRIES,
     'seeds/countries.csv': COUNTRIES_CSV,
-    'models/schema.yml': `version: 2
-
-models:
-  - name: stg_customers
-    columns:
-      - name: id
-        data_tests:
-          # add the two data tests below this line (one per line, prefixed with "- ")
+    'models/dim_countries.sql': `-- Write a SELECT that reads from the countries seed using ref().
 `,
   },
-  openFiles: ['models/schema.yml'],
+  openFiles: ['seeds/countries.csv', 'models/dim_countries.sql'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
-    countries: COUNTRIES_CSV,
   },
-  preRanModels: [
-    'stg_customers',
-    'stg_orders',
-    'dim_customers',
-    'int_paid_orders',
-    'fct_revenue_by_customer',
-    'dim_countries',
-  ],
   tasks: [
     {
-      id: 'not-null',
-      prompt: 'In `schema.yml`, add a `not_null` test under the `id` column of `stg_customers`.',
-      hint: "On a new line under `data_tests:`, write `          - not_null` (10 leading spaces, dash, space, then `not_null`).",
-      validate: (s) => testDefinitionsInclude(s, 'stg_customers', ['not_null']),
+      id: 'inspect',
+      prompt: 'Skim `seeds/countries.csv` — it lives under `seeds/`, not `models/`. Notice the header row and five data rows.',
+      hint: 'Click the file in the file tree on the left. CSVs render as plain text — you should see one header row and five data rows.',
+      validate: (s) => s.openedFiles.has('seeds/countries.csv') || s.loadedSeeds.has('countries'),
     },
     {
-      id: 'unique',
-      prompt: 'Now add a `unique` test on the same `id` column.',
-      hint: "Another line right below the `not_null` you just added: `          - unique`.",
-      validate: (s) => testDefinitionsInclude(s, 'stg_customers', ['not_null', 'unique']),
+      id: 'seed',
+      prompt: 'Run `dbt seed` in the terminal to load `countries.csv` into the warehouse.',
+      hint: 'Type `dbt seed` at the prompt and press Enter. Only `dbt seed` loads CSVs — `dbt run` will not.',
+      validate: (s) => seedLoaded(s, 'countries'),
     },
     {
-      id: 'run-tests',
-      prompt: 'Run `dbt test` and make sure both tests pass on `stg_customers`.',
-      hint: 'Type `dbt test` at the prompt. You should see two PASS lines.',
-      validate: (s) => allTestsPass(s, 'stg_customers'),
+      id: 'ref',
+      prompt: 'In `models/dim_countries.sql`, write a SELECT that reads all columns from the `countries` seed using `{{ ref(\'countries\') }}`.',
+      hint: "Try: `select * from {{ ref('countries') }}`",
+      validate: (s) => hasModel(s, 'dim_countries') && modelRefs(s, 'dim_countries', 'countries'),
     },
     {
-      id: 'email-not-null',
-      prompt: 'Add a new column block for `email` under the `stg_customers` model and give it a `not_null` test. Then run `dbt test` again.',
-      hint: "Add this under the existing `id` block (same indentation as `- name: id`):\n```\n      - name: email\n        data_tests:\n          - not_null\n```",
-      validate: (s) =>
-        fileMatches(s, 'models/schema.yml', /- name:\s*email[\s\S]*?data_tests:\s*[\s\S]*?-\s*not_null/) &&
-        allTestsPass(s, 'stg_customers'),
+      id: 'run',
+      prompt: 'Now run `dbt run` to build `dim_countries` on top of the seed.',
+      validate: (s) => modelRan(s, 'dim_countries'),
+    },
+    {
+      id: 'show',
+      prompt: 'Preview the result with `dbt show --select dim_countries`.',
+      hint: 'You should see five rows — one per country in the CSV.',
+      validate: (s) => s.shownModels.has('dim_countries'),
     },
   ],
   quiz: {
-    question: 'When does `dbt test` run your tests?',
+    question: 'Which kind of data is a seed best suited for?',
     options: [
-      'Continuously in the background',
-      'Only when you call `dbt test` (or `dbt build`)',
-      'Automatically after every `dbt run`',
-      'Only in production',
+      'Millions of rows of event data',
+      'Small, slow-changing reference data like country codes',
+      'Production transactions',
+      'Real-time streaming data',
     ],
     correctIndex: 1,
-    explanation: 'Tests run only when you invoke them. `dbt build` is a shortcut that runs models and their tests together.',
+    explanation: 'Seeds are CSVs in your repo — they go through code review and are tiny. Anything large or fast-changing belongs in your warehouse, not in a CSV.',
   },
   furtherReading: [
-    { label: 'Data tests', url: 'https://docs.getdbt.com/docs/build/data-tests' },
+    { label: 'Seeds', url: 'https://docs.getdbt.com/docs/build/seeds' },
   ],
 }
 

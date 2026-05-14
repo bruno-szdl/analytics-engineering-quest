@@ -12,6 +12,8 @@ import lesson09 from './lesson09'
 import lesson10 from './lesson10'
 import lesson11 from './lesson11'
 import lesson12 from './lesson12'
+import lesson13 from './lesson13'
+import lesson14 from './lesson14'
 
 export const lessons: Lesson[] = [
   lesson00,
@@ -27,6 +29,8 @@ export const lessons: Lesson[] = [
   lesson10,
   lesson11,
   lesson12,
+  lesson13,
+  lesson14,
 ]
 
 export function getLessonById(id: number): Lesson | undefined {

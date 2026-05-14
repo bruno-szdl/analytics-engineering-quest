@@ -11,11 +11,13 @@ npm run lint     # ESLint validation
 npm run preview  # Preview production build locally
 ```
 
-There are no automated tests — level completion is validated via `validate()` functions in each level definition.
+There are no automated tests — task completion is validated via `validate()` functions in each lesson definition.
 
 ## Architecture
 
-**dbt-quest** is a browser-based interactive game for learning dbt, inspired by Learn Git Branching. It runs entirely in-browser with no backend: SQL executes in DuckDB WASM, the editor is Monaco, and the DAG is rendered with React Flow.
+**dbt-quest** is a browser-based interactive tool for learning dbt, inspired by SQLBolt. It runs entirely in-browser with no backend: SQL executes in DuckDB WASM, the editor is Monaco, and the DAG is rendered with React Flow.
+
+It is a course of **12 short lessons** (plus an intro page, lesson 0). Each lesson teaches one concept, then gives the learner 3–5 hands-on **tasks** that share a single workspace, plus an optional end-of-lesson quiz.
 
 ### Stack
 
@@ -30,43 +32,50 @@ There are no automated tests — level completion is validated via `validate()` 
 
 ```
 src/
-├── engine/          # dbt simulation: compile SQL, build DAG, execute against DuckDB, run CLI commands
-├── levels/          # Level definitions (level01.ts–level10.ts) + module groupings (index.ts)
-├── components/      # React UI panels (Editor, TerminalPanel, DagPanel, LevelPanel, etc.)
+├── engine/          # dbt simulation: parse SQL, build DAG, execute against DuckDB, run CLI commands
+├── lessons/         # Lesson definitions (lesson00.ts–lesson12.ts), the shared _canonical.ts snapshot, index.ts
+├── components/      # React UI panels (Editor, TerminalPanel, DagPanel, LessonPanel, IntroPage, etc.)
 ├── store/
-│   └── gameStore.ts # Zustand store: files, ranModels, testResults, completedLevels, theme
+│   └── gameStore.ts # Zustand store: files, ranModels, testResults, compiledModels, completedTasks, theme
 └── index.css        # CSS variable theming (dark default, light variant)
 ```
 
 ### Engine pipeline
 
-1. **`compiler.ts`** — extracts `ref()`, `source()`, `config()` from SQL Jinja-like syntax
-2. **`dagBuilder.ts`** — builds node/edge graph; infers layer (staging/intermediate/mart) from naming; reads `schema.yml` for sources
-3. **`executor.ts`** — compiles and runs SQL in DuckDB; handles VIEW vs TABLE materialization
-4. **`runner.ts`** — parses dbt CLI commands (`dbt run`, `dbt test`, `dbt show`) and resolves selectors (`+model`, `model+`)
-5. **`validators.ts`** — helpers used by each level's `validate()` to check completion
+1. **`commandParser.ts`** — parses `dbt <subcommand>` input and `--select` / `--exclude` selectors (`+model`, `model+`, `tag:`, `path:`)
+2. **`compiler.ts`** — extracts `ref()`, `source()`, `config()` from SQL Jinja-like syntax
+3. **`dagBuilder.ts`** — builds node/edge graph; infers layer (staging/intermediate/mart) from naming; reads `.yml` for sources
+4. **`executor.ts`** — compiles and runs SQL in DuckDB; handles VIEW vs TABLE materialization
+5. **`runner.ts`** — dispatches `dbt run/test/build/show/compile/seed/snapshot`, formats terminal output
+6. **`tests.ts`** — parses `schema.yml` generic tests (`not_null`, `unique`, `accepted_values`, `relationships`) and runs them as real SQL against DuckDB
+7. **`validators.ts`** — helpers used by each lesson task's `validate()` to check completion
 
-### Level structure
+`snapshots.ts` and incremental-model handling still exist for engine compatibility but are **not used by any current lesson**.
 
-Each level file exports an object with:
-- `initialFiles` — starting SQL/YAML file contents
-- `seeds` — CSV data for `source()` calls loaded into DuckDB
-- `goal.description` + optional `goal.dagShape` — target DAG shape for completion
-- `validate(state)` — checks whether the player has completed the level
-- `badge` — emoji awarded on completion
+### Lesson structure
 
-To add a new level: create `src/levels/levelNN.ts` and register it in `src/levels/index.ts`.
+Each lesson file (`src/lessons/lessonNN.ts`) exports a `Lesson` object (type in `src/engine/types.ts`):
 
-#### Adding levels beyond the current maximum — "last level" rule
+- `concept` — the explanatory text shown above the tasks (minimal markdown: `**bold**`, `` `code` ``, fenced blocks, `-` lists)
+- `initialFiles` — starting SQL/YAML/CSV file contents
+- `openFiles` — which files open as editor tabs on load
+- `seeds` — CSV data registered directly as warehouse tables (`raw.customers` → DuckDB `raw.customers`)
+- `preRanModels` — models silently materialized into DuckDB on lesson load
+- `tasks` — array of `Task { id, prompt, hint?, validate(state) => boolean }`
+- `quiz` — optional end-of-lesson multiple-choice question
+- `goal.dagShape` — optional target DAG shape
+- `panels` — which side panels (`files` / `warehouse` / `lineage`) this lesson needs; omit for all, `[]` for none. The Editor + Console are always visible.
+- `furtherReading` — optional links to official dbt docs
 
-`getLastLevelId()` (in `src/levels/index.ts`) returns `max(level.id)` across all registered levels. This is the **single source of truth** for detecting the final level. Everything that gates the course-complete modal flows through it:
+Tasks validate purely from observed `GameState` (`files`, `ranModels`, `testResults`, `compiledModels`, `loadedSeeds`, etc.). **Task completion is sticky** — once a task is in `completedTasks` it is never re-evaluated (`gameStore.ts` `checkTasks`), so a `validate()` may key off a transient state (e.g. `testResults === 'fail'`) and stay completed after that state changes.
 
-- `gameStore.ts` — triggers `showCourseComplete` when `currentLevelId === getLastLevelId()` after a level is passed.
-- `LevelCompleteModal.tsx`, `LevelQuizModal.tsx`, `LevelPanel.tsx` — all use `getLastLevelId()` to decide whether to show "Next level →" or the course-complete path.
+### The canonical project
 
-When you add a new level (say level 43), `getLastLevelId()` automatically returns 43 — no other change is needed. The `CourseCompleteModal` (the full-screen celebration window with the 🎓 animation) will only fire on the new last level.
+Every lesson is a slice of the **same fictional e-commerce dbt project**. `src/lessons/_canonical.ts` holds the "ideal" file contents at each milestone (the shared raw CSVs, staging/mart model SQL, `schema.yml` snapshots). Each lesson imports the snapshot constants it starts from, so the project evolves coherently lesson to lesson.
 
-**Important:** do not guard "is this the last level?" with `levels.length` — level IDs are 1-indexed and `levels.length === max(id)` only holds by coincidence while IDs are a gapless 1..N sequence. Always use `getLastLevelId()`.
+### Adding a lesson
+
+Create `src/lessons/lessonNN.ts` and register it in `src/lessons/index.ts`. `getLastLessonId()` returns `max(lesson.id)` automatically — it's the single source of truth for "is this the last lesson?", used by the lesson panel / navigation. Do not guard "last lesson" with `lessons.length`.
 
 ### Theming
 
@@ -74,4 +83,4 @@ CSS variables defined in `index.css` drive all colors. Theme (dark/light) is per
 
 ### State shape
 
-`gameStore.ts` holds: `files` (record of filename → content), `ranModels`, `testResults`, `terminalHistory`, `currentLevelId`, `completedLevels`, `unlockedBadges`, `bottomTab`, `showLevelIntro`, and `isDarkTheme`.
+`gameStore.ts` holds: `files` (record of filename → content), `ranModels`, `shownModels`, `compiledModels`, `testResults`, `loadedSeeds`, `buildSucceeded`, `openedFiles`, `terminalHistory`, `currentLessonId`, `completedTasks` (keyed `<lessonId>.<taskId>`), `revealedHints`, `correctQuizzes`, `seenPanels`, `bottomTab`, and `theme`. Only `theme` and `seenPanels` are persisted to `localStorage` (via `safeStorage`); task progress is in-memory for the session.

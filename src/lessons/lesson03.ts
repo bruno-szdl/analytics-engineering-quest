@@ -22,12 +22,12 @@ const lesson03: Lesson = {
 
 \`staging → intermediate → mart\`
 
-Staging cleans the raw input. Intermediate joins, filters, or aggregates. Marts are the polished outputs the business consumes. Each step is its own model, connected by \`ref()\`.
+**Staging** cleans the raw input. **Intermediate** joins, filters, or aggregates. **Marts** are the polished outputs the business consumes. Each step is its own model, connected by \`ref()\`.
 
 So far our project handles customers. Now we'll add orders. \`stg_orders\` is already in place. Your job is to build the two steps that turn it into a revenue mart:
 
-1. \`int_paid_orders\` — keeps only \`status = 'paid'\` rows.
-2. \`fct_revenue_by_customer\` — sums paid \`amount\` per customer.`,
+1. \`int_paid_orders\`: keeps only \`status = 'paid'\` rows.
+2. \`fct_revenue_by_customer\`: sums paid \`amount\` per customer.`,
   initialFiles: {
     'models/stg_customers.sql': STG_CUSTOMERS_HARDCODED,
     'models/dim_customers.sql': DIM_CUSTOMERS_VIEW,
@@ -35,12 +35,15 @@ So far our project handles customers. Now we'll add orders. \`stg_orders\` is al
     'models/int_paid_orders.sql': `-- Select every column from stg_orders, but only the rows where status = 'paid'.
 -- Use {{ ref('stg_orders') }} so dbt knows about the dependency.
 `,
+    'models/fct_revenue_by_customer.sql': `-- Sum amount from int_paid_orders, grouped by customer_id.
+-- Use {{ ref('int_paid_orders') }} so dbt knows about the dependency.
+`,
   },
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
     'raw.orders': RAW_ORDERS_CSV,
   },
-  openFiles: ['models/int_paid_orders.sql', 'models/stg_orders.sql'],
+  openFiles: ['models/int_paid_orders.sql', 'models/fct_revenue_by_customer.sql', 'models/stg_orders.sql'],
   preRanModels: ['stg_customers', 'dim_customers', 'stg_orders'],
   tasks: [
     {
@@ -59,7 +62,7 @@ So far our project handles customers. Now we'll add orders. \`stg_orders\` is al
     },
     {
       id: 'mart',
-      prompt: 'Create `models/fct_revenue_by_customer.sql` that sums `amount` from `int_paid_orders` grouped by `customer_id`.',
+      prompt: 'In `models/fct_revenue_by_customer.sql`, write a SELECT that sums `amount` from `int_paid_orders` grouped by `customer_id`.',
       hint: "Try:\n```\nselect\n  customer_id,\n  sum(amount) as revenue\nfrom {{ ref('int_paid_orders') }}\ngroup by customer_id\n```",
       validate: (s) =>
         hasModel(s, 'fct_revenue_by_customer') &&
