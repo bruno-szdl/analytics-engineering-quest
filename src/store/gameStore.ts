@@ -429,10 +429,10 @@ export const useGameStore = create<StoreState>()(
               }
             }
           }
-          set((s) => ({
+          set({
             terminalHistory: [],
             ...(preRanSet.size ? { ranModels: preRanSet, modelColumns: preRanColumns } : {}),
-          }))
+          })
         } catch (e) {
           set((s) => ({
             terminalHistory: [
