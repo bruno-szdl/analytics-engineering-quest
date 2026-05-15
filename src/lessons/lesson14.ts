@@ -27,12 +27,13 @@ const lesson14: Lesson = {
 - Generic tests (\`not_null\`, \`unique\`, \`relationships\`, \`accepted_values\`), descriptions, and one singular test
 - All laid out in the canonical \`staging/intermediate/marts\` structure
 
-\`dbt build\` is the one command you'll run most in real projects. It walks the DAG once and, for each node:
+\`dbt build\` is the one command you'll run most in real projects. A single command handles everything in one pass:
 
-1. Builds the model (or loads the seed, or runs the snapshot)
-2. Immediately runs every test attached to it
+1. **Seeds** - loads CSV files from \`seeds/\` into the warehouse
+2. **Models** - materializes each model in dependency order
+3. **Tests** - runs tests immediately after each model, and skips downstream models if one fails
 
-If a test fails, downstream models that depend on the bad data are skipped. That's the safety net: no broken upstream data quietly poisons a dashboard.
+That last point is the safety net: no broken upstream data quietly poisons a dashboard.
 
 Run \`dbt build\` and watch the whole project go.`,
   initialFiles: {
@@ -53,14 +54,8 @@ Run \`dbt build\` and watch the whole project go.`,
   },
   tasks: [
     {
-      id: 'seed',
-      prompt: 'First, run `dbt seed` to load `countries.csv` into the warehouse.',
-      hint: 'A `dbt build` includes seeds, but doing it explicitly here keeps the steps separable.',
-      validate: (s) => s.loadedSeeds.has('countries'),
-    },
-    {
       id: 'build',
-      prompt: 'Now run `dbt build`. It will materialize every model and run every test in DAG order.',
+      prompt: 'Run `dbt build`. It will load seeds, materialize every model, and run every test - all in one command.',
       hint: 'A single command does the whole thing: `dbt build`.',
       validate: (s) =>
         buildSucceeded(s) &&

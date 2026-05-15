@@ -462,6 +462,22 @@ export async function execute(
         })
       }
 
+      // Load seeds before running models (dbt build includes dbt seed)
+      const seedFiles = Object.entries(state.files).filter(
+        ([p]) => p.startsWith('seeds/') && p.endsWith('.csv'),
+      )
+      for (const [path, content] of seedFiles) {
+        const name = getFileStem(path, '.csv')
+        try {
+          await registerCsv(name, content.trim())
+          newSeeds.add(name)
+          lines.push({ text: `OK loaded seed ${name}`, color: 'green' })
+        } catch (e) {
+          lines.push({ text: `ERROR loading seed ${name}: ${errorMessage(e)}`, color: 'red' })
+        }
+      }
+      if (seedFiles.length > 0) lines.push({ text: '' })
+
       const modelNames = new Set(selected.map((m) => m.name))
       const tests = parseTests(state.files, modelNames)
       const testsByModel = new Map<string, TestDef[]>()
@@ -728,6 +744,7 @@ export async function execute(
   if (command.type === 'build') {
     updatedState.buildSucceeded =
       !runFailed && skippedCount === 0 && failedTestCount === 0
+    updatedState.loadedSeeds = newSeeds
   }
   return { lines, updatedState }
 }
