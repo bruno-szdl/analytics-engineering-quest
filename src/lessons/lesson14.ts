@@ -62,7 +62,11 @@ Run \`dbt build\` and watch the whole project go.`,
       id: 'build',
       prompt: 'Now run `dbt build`. It will materialize every model and run every test in DAG order.',
       hint: 'A single command does the whole thing: `dbt build`.',
-      validate: (s) => buildSucceeded(s),
+      validate: (s) =>
+        buildSucceeded(s) &&
+        s.lastRun !== null &&
+        s.lastRun.command === 'build' &&
+        !s.lastRun.usedSelect,
     },
     {
       id: 'fct',

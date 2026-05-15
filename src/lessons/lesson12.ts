@@ -98,7 +98,11 @@ Watch the lineage graph as you type each selector below: it lights up exactly th
       id: 'build-all',
       prompt: 'Finally, run a plain `dbt build` to build and test the entire project in one go.',
       hint: 'No selector this time -`dbt build` walks the whole DAG.',
-      validate: (s) => buildSucceeded(s),
+      validate: (s) =>
+        buildSucceeded(s) &&
+        s.lastRun !== null &&
+        s.lastRun.command === 'build' &&
+        !s.lastRun.usedSelect,
     },
   ],
   quiz: {

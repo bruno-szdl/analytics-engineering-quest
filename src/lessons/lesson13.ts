@@ -66,7 +66,11 @@ The project now has tests/ alongside the staging/intermediate/marts folders. We'
       id: 'build',
       prompt: 'Run `dbt build`. It runs models then every test (generic + singular) in dependency order.',
       hint: '`dbt build` = `dbt run` + `dbt test`, in DAG order.',
-      validate: (s) => buildSucceeded(s),
+      validate: (s) =>
+        buildSucceeded(s) &&
+        s.lastRun !== null &&
+        s.lastRun.command === 'build' &&
+        !s.lastRun.usedSelect,
     },
   ],
   quiz: {
