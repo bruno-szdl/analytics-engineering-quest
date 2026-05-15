@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Header from './components/Header'
 import IntroPage from './components/IntroPage'
 import Workspace from './components/Workspace'
+import PrivacyPage from './components/PrivacyPage'
 import { useGameStore } from './store/gameStore'
 import { useIsMobile } from './hooks/useIsMobile'
 import MobileLayout from './components/MobileLayout'
@@ -13,12 +14,19 @@ function parseLessonHash(): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function getCurrentRoute(): 'lesson' | 'privacy' {
+  const hash = window.location.hash
+  if (hash.startsWith('#/privacy')) return 'privacy'
+  return 'lesson'
+}
+
 export default function App() {
   const loadLesson = useGameStore((s) => s.loadLesson)
   const currentLessonId = useGameStore((s) => s.currentLessonId)
   const theme = useGameStore((s) => s.theme)
   const initializedRef = useRef(false)
   const isMobile = useIsMobile()
+  const [route, setRoute] = useState<'lesson' | 'privacy'>(getCurrentRoute())
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme === 'light' ? 'light' : ''
@@ -47,9 +55,13 @@ export default function App() {
 
   useEffect(() => {
     const onHashChange = () => {
-      const id = parseLessonHash()
-      if (id !== null && id !== useGameStore.getState().currentLessonId) {
-        loadLesson(id).catch(() => undefined)
+      const currentRoute = getCurrentRoute()
+      setRoute(currentRoute)
+      if (currentRoute === 'lesson') {
+        const id = parseLessonHash()
+        if (id !== null && id !== useGameStore.getState().currentLessonId) {
+          loadLesson(id).catch(() => undefined)
+        }
       }
     }
     window.addEventListener('hashchange', onHashChange)
@@ -62,8 +74,8 @@ export default function App() {
     return (
       <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--color-base)' }}>
         <Header />
-        <div className="flex-1 overflow-hidden">
-          {isIntro ? <IntroPage /> : <MobileLayout />}
+        <div className="flex-1 overflow-y-auto">
+          {route === 'privacy' ? <PrivacyPage /> : (isIntro ? <IntroPage /> : <MobileLayout />)}
         </div>
       </div>
     )
@@ -72,7 +84,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--color-base)' }}>
       <Header />
-      {isIntro ? <IntroPage /> : <Workspace />}
+      {route === 'privacy' ? <PrivacyPage /> : (isIntro ? <IntroPage /> : <Workspace />)}
     </div>
   )
 }

@@ -179,5 +179,55 @@
     "body": "Prueba recargar la página. Si el problema persiste, puedes resetear tu progreso guardado — esto borrará las lecciones completadas y los paneles desbloqueados, pero debería recuperar la app.",
     "reload": "Recargar página",
     "reset": "Resetear progreso y recargar"
+  },
+  "privacy": {
+    "title": "Política de Privacidad",
+    "lastUpdated": "Última actualización:",
+    "introduction": {
+      "heading": "1. Introducción",
+      "p1": "Bienvenido a dbt quest. Respetamos tu privacidad y nos comprometemos a ser transparentes sobre cómo recopilamos y usamos información sobre ti.",
+      "p2": "Esta Política de Privacidad describe cómo recopilamos, usamos y protegemos tus datos cuando utilizas nuestro sitio web."
+    },
+    "dataCollection": {
+      "heading": "2. Recopilación de Datos",
+      "intro": "Recopilamos los siguientes tipos de información:",
+      "navData": "Datos de Navegación: Información sobre cómo usas nuestro sitio web, como páginas visitadas, tiempo dedicado y acciones realizadas. Estos datos se recopilan de forma agregada y anónima.",
+      "browserData": "Datos del Navegador: Tipo de navegador, sistema operativo, idioma e información técnica similar.",
+      "localStorage": "Almacenamiento Local: Tu progreso en las lecciones se guarda localmente en tu navegador para mejorar la experiencia de aprendizaje."
+    },
+    "dataUsage": {
+      "heading": "3. Cómo Usamos Tus Datos",
+      "intro": "Usamos los datos recopilados para:",
+      "improve": "Mejorar y optimizar la experiencia del usuario",
+      "understand": "Entender cómo interactúas con nuestro contenido",
+      "analyze": "Analizar tendencias de uso del sitio web",
+      "save": "Guardar tu progreso de aprendizaje localmente"
+    },
+    "cloudflare": {
+      "heading": "4. Cloudflare Web Analytics",
+      "intro": "Usamos Cloudflare Web Analytics para recopilar datos de análisis sobre cómo los visitantes usan nuestro sitio web. Esta herramienta:",
+      "aggregate": "Recopila datos de forma agregada y anónima",
+      "noCookies": "No utiliza cookies de rastreo de terceros",
+      "noIndividual": "No te identifica como un individuo específico",
+      "dnt": "Respeta la configuración \"No Rastrear\" de tu navegador",
+      "more": "Para más información, consulta la",
+      "cloudflarePolicy": "política de privacidad de Cloudflare"
+    },
+    "storage": {
+      "heading": "5. Almacenamiento de Datos",
+      "p1": "Tu progreso se almacena solo en el almacenamiento local de tu navegador. No guardamos ninguna información personal en nuestros servidores.",
+      "p2": "Si borras los datos de tu navegador, tu progreso se perderá. Te recomendamos que no lo hagas durante tus estudios."
+    },
+    "rights": {
+      "heading": "6. Tus Derechos",
+      "intro": "Dependiendo de tu ubicación, puedes tener derechos con respecto a tus datos:",
+      "gdpr": "GDPR (UE): Derecho de acceso, rectificación, supresión y portabilidad de datos",
+      "lgpd": "LGPD (Brasil): Derecho de acceso, corrección, supresión y objeción al procesamiento"
+    },
+    "contact": {
+      "heading": "7. Contacto",
+      "text": "Si tienes preguntas sobre esta Política de Privacidad o cómo manejamos tus datos, abre un issue en"
+    },
+    "footer": "Nos reservamos el derecho de actualizar esta Política de Privacidad en cualquier momento. Los cambios significativos se comunicarán aquí."
   }
 }

@@ -217,6 +217,8 @@ function Footer() {
         <FooterLink href="https://github.com/bruno-szdl/dbt-quest">GitHub</FooterLink>
         {' · '}
         <FooterLink href="https://www.linkedin.com/in/brunoszdl">LinkedIn</FooterLink>
+        {' · '}
+        <FooterLink href="#/privacy">Privacy</FooterLink>
       </div>
       <div style={{ marginTop: '6px', fontSize: '0.75rem' }}>
         {t('intro.footer.tag')}
