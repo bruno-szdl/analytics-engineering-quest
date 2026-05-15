@@ -31,7 +31,7 @@ export const RAW_ORDERS_CSV = `id,customer_id,amount,status,created_at
 
 /**
  * Dirty variant of raw.customers — Eve's email is missing. IDs stay unique, so
- * only a `not_null` test on `email` catches it. Used by lesson 7 to let the
+ * only a `not_null` test on `email` catches it. Used by lesson 8 to let the
  * learner experience a test failing on real bad data, then fix it.
  */
 export const RAW_CUSTOMERS_CSV_DIRTY = `id,name,email,country
@@ -40,6 +40,31 @@ export const RAW_CUSTOMERS_CSV_DIRTY = `id,name,email,country
 3,Carol,carol@example.com,BR
 4,Dave,dave@example.com,IN
 5,Eve,,DE`
+
+/**
+ * Dirty variant of raw.orders — order 105 has status 'cancelled' (not in the accepted list).
+ * Used by lesson 9 to let the learner experience accepted_values failing on real bad data, then fix it.
+ */
+export const RAW_ORDERS_CSV_DIRTY = `id,customer_id,amount,status,created_at
+101,1,42.00,paid,2024-01-10
+102,2,18.50,paid,2024-01-12
+103,1,99.00,refunded,2024-01-15
+104,3,12.75,paid,2024-02-01
+105,4,55.00,cancelled,2024-02-04
+106,2,8.00,pending,2024-02-09`
+
+/**
+ * Dirty variant of raw.orders — order 107 is dated far in the future (2099).
+ * Used by lesson 13 to let the learner experience a singular test failing on real bad data, then fix it.
+ */
+export const RAW_ORDERS_CSV_WITH_FUTURE = `id,customer_id,amount,status,created_at
+101,1,42.00,paid,2024-01-10
+102,2,18.50,paid,2024-01-12
+103,1,99.00,refunded,2024-01-15
+104,3,12.75,paid,2024-02-01
+105,4,55.00,paid,2024-02-04
+106,2,8.00,pending,2024-02-09
+107,1,25.00,paid,2099-01-01`
 
 export const COUNTRIES_CSV = `code,name,region
 US,United States,Americas

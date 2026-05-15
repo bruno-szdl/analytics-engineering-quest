@@ -310,7 +310,7 @@
   },
   "9": {
     "title": "Relationships & accepted_values",
-    "concept": "Además de `not_null`/`unique`, otros dos data tests aparecen todo el tiempo:\n\n- **accepted_values**: la columna debe ser uno de una lista fija. Genial para campos de status, donde un typo o un valor nuevo podría romper dashboards en silencio.\n- **relationships**: cada valor de esta columna tiene que existir en una columna de otro model. Es un chequeo de clave foránea sin que tengas que escribirlo.\n\nAmbos se declaran en YAML, bajo `data_tests:`, junto a los data tests más simples. La sintaxis es un poco más elaborada porque reciben parámetros:\n\n```yaml\n- name: status\n  data_tests:\n    - accepted_values:\n        arguments:\n          values: ['paid', 'refunded', 'pending']\n- name: customer_id\n  data_tests:\n    - relationships:\n        arguments:\n          to: ref('stg_customers')\n          field: id\n```\n\nFíjate en la indentación: el nombre del test (`accepted_values` / `relationships`) va seguido de dos puntos, y el bloque de parámetros queda indentado abajo.\n\nNuestro `stg_customers` ya tiene `not_null` + `unique` de la lección anterior. Ahora vas a agregar los dos data tests nuevos en `stg_orders`.",
+    "concept": "Además de `not_null`/`unique`, otros dos data tests aparecen todo el tiempo:\n\n- **accepted_values**: la columna debe ser uno de una lista fija. Genial para campos de status, donde un typo o un valor nuevo podría romper dashboards en silencio.\n- **relationships**: cada valor de esta columna tiene que existir en una columna de otro model. Es un chequeo de clave foránea sin que tengas que escribirlo.\n\nAmbos se declaran en YAML, bajo `data_tests:`, junto a los data tests más simples. La sintaxis es un poco más elaborada porque reciben parámetros:\n\n```yaml\n- name: status\n  data_tests:\n    - accepted_values:\n        arguments:\n          values: ['paid', 'refunded', 'pending']\n- name: customer_id\n  data_tests:\n    - relationships:\n        arguments:\n          to: ref('stg_customers')\n          field: id\n```\n\nFíjate en la indentación: el nombre del test (`accepted_values` / `relationships`) va seguido de dos puntos, y el bloque de parámetros queda indentado abajo.\n\nNuestro `stg_customers` ya tiene `not_null` + `unique` de la lección anterior. Ahora vas a agregar los dos data tests nuevos en `stg_orders`. Esta vez los datos crudos no están limpios de nuevo — vas a ver un test fallar en una fila mala real y luego arreglarlo.",
     "tasks": [
       {
         "prompt": "Agrega un test `accepted_values` en `stg_orders.status` permitiendo `['paid', 'refunded', 'pending']`.",
@@ -321,8 +321,20 @@
         "hint": "Agrega:\n```\n          - relationships:\n              arguments:\n                to: ref('stg_customers')\n                field: id\n```"
       },
       {
-        "prompt": "Corre `dbt test`. Los dos nuevos chequeos deberían pasar.",
-        "hint": ""
+        "prompt": "Corre `dbt test`. Uno de los chequeos va a fallar — los datos crudos tienen un pedido con status inválido.",
+        "hint": "Escribe `dbt test`. Busca la línea roja `FAIL` — lee qué test falló y por qué."
+      },
+      {
+        "prompt": "Corre `dbt show --select stg_orders` para inspeccionar los datos. Encuentra la fila con el status inválido.",
+        "hint": "Busca una fila donde `status` no sea `paid`, `refunded` o `pending`."
+      },
+      {
+        "prompt": "Arréglalo en el model de staging: agrega una cláusula `where` que deje solo los status válidos. Luego materializa solo ese model.",
+        "hint": "En `stg_orders.sql`, agrega `where status in ('paid', 'refunded', 'pending')` como última línea. Luego `dbt run --select stg_orders`."
+      },
+      {
+        "prompt": "Corre `dbt test` de nuevo. Los dos chequeos deberían pasar ahora.",
+        "hint": "El filtro eliminó la fila inválida. `dbt test` debería ponerse verde."
       }
     ],
     "quiz": {
@@ -442,19 +454,31 @@
   },
   "13": {
     "title": "Tests custom (singular tests)",
-    "concept": "Cuando los tests integrados no alcanzan, puedes escribir los tuyos. Un **singular test** es solo una query SQL guardada en `tests/`. Si devuelve cualquier fila, el test falla.\n\nEl patrón es \"muéstrame las filas malas\":\n\n```sql\n-- tests/no_pre_launch_signups.sql\nselect *\nfrom {{ ref('stg_users') }}\nwhere signup_at < '2024-01-01'  -- nuestra empresa ni siquiera existía\n```\n\nEl proyecto ahora tiene `tests/` al lado de las carpetas staging/intermediate/marts. Agregamos un singular test, `no_future_signups.sql`, que señala pedidos con fecha en el futuro. Léelo, después corre `dbt build` para ver el singular test ejecutarse junto a los genéricos.",
+    "concept": "Cuando los tests integrados no alcanzan, puedes escribir los tuyos. Un **singular test** es solo una query SQL guardada en `tests/`. Si devuelve cualquier fila, el test falla.\n\nEl patrón es \"muéstrame las filas malas\":\n\n```sql\n-- tests/no_pre_launch_signups.sql\nselect *\nfrom {{ ref('stg_users') }}\nwhere signup_at < '2024-01-01'  -- nuestra empresa ni siquiera existía\n```\n\nEl proyecto ahora tiene `tests/` al lado de las carpetas staging/intermediate/marts. Agregamos un singular test, `no_future_signups.sql`, que señala pedidos con fecha en el futuro. Esta vez los datos crudos tienen una fila mala — vas a ver el test capturarla y luego arreglarla igual que antes.",
     "tasks": [
       {
         "prompt": "Abre `tests/no_future_signups.sql` y léelo. El test pasa cuando esa query devuelve cero filas.",
         "hint": "Haz click en el archivo en el árbol. El patrón: escribir un SELECT que devuelva filas problemáticas; resultado vacío = pass."
       },
       {
-        "prompt": "Agrega un segundo singular test en `tests/no_negative_revenue.sql` que encuentre filas en `fct_revenue_by_customer` donde revenue sea negativo (no debería haberlas, pero verifiquemos).",
+        "prompt": "Corre `dbt build`. Uno de los singular tests va a fallar — los datos crudos tienen un pedido con fecha en el futuro.",
+        "hint": "Escribe `dbt build`. Busca la línea roja que indica qué test falló. El test está señalando un problema en los datos."
+      },
+      {
+        "prompt": "Corre `dbt show --select stg_orders` para inspeccionar los datos. Encuentra la fila con fecha en el futuro.",
+        "hint": "Busca una fila donde `created_at` está muy adelante en el tiempo — esa es la que capturó el test."
+      },
+      {
+        "prompt": "Arréglalo igual que antes: filtra la fila problemática en el model de staging. Luego materializa solo `stg_orders`.",
+        "hint": "En `models/staging/stg_orders.sql`, agrega `where created_at <= current_date` como última línea. Luego `dbt run --select stg_orders`."
+      },
+      {
+        "prompt": "Bien. Ahora agrega un segundo singular test en `tests/no_negative_revenue.sql` que encuentre filas en `fct_revenue_by_customer` donde revenue sea negativo.",
         "hint": "Crea el archivo con:\n```\nselect *\nfrom {{ ref('fct_revenue_by_customer') }}\nwhere revenue < 0\n```"
       },
       {
-        "prompt": "Corre `dbt build`. Corre los models y después todos los tests (genéricos + singulares) en orden de dependencia.",
-        "hint": "`dbt build` = `dbt run` + `dbt test`, en el orden del DAG."
+        "prompt": "Corre `dbt build`. Todos los models se construyen y todos los tests — genéricos y singulares — deberían pasar ahora.",
+        "hint": "`dbt build` = `dbt run` + `dbt test`, en el orden del DAG. Esta vez todo debería ponerse verde."
       }
     ],
     "quiz": {

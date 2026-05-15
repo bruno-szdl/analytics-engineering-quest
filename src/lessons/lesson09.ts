@@ -3,10 +3,14 @@ import {
   acceptedValuesTestIncludes,
   relationshipTestPoints,
   allTestsPass,
+  testFailed,
+  modelShown,
+  modelSqlMatches,
+  onlyModelsRan,
 } from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
-  RAW_ORDERS_CSV,
+  RAW_ORDERS_CSV_DIRTY,
   COUNTRIES_CSV,
   STG_CUSTOMERS_SOURCED,
   STG_ORDERS_SOURCED,
@@ -44,7 +48,7 @@ Both are declared in YAML under \`data_tests:\`, alongside the simpler data test
 
 Notice the indentation: the test name (\`accepted_values\` / \`relationships\`) is followed by a colon, then the parameter block indented underneath.
 
-Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous lesson. Now you'll add the two new data tests to \`stg_orders\`.`,
+Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous lesson. Now you'll add the two new data tests to \`stg_orders\`. This time the raw data isn't clean again — you'll see a test fail on a real bad row, then fix it.`,
   initialFiles: {
     'models/sources.yml': SOURCES_YML,
     'models/stg_customers.sql': STG_CUSTOMERS_SOURCED,
@@ -67,7 +71,7 @@ Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous le
   openFiles: ['models/schema.yml'],
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
-    'raw.orders': RAW_ORDERS_CSV,
+    'raw.orders': RAW_ORDERS_CSV_DIRTY,
     countries: COUNTRIES_CSV,
   },
   preRanModels: [
@@ -92,8 +96,29 @@ Our \`stg_customers\` already has \`not_null\` + \`unique\` from the previous le
       validate: (s) => relationshipTestPoints(s, 'stg_orders', 'customer_id', 'stg_customers', 'id'),
     },
     {
-      id: 'run',
-      prompt: 'Run `dbt test`. Both new checks should pass.',
+      id: 'see-fail',
+      prompt: "Run `dbt test`. One of the new checks will fail — the raw data has an order with an unexpected status.",
+      hint: "Type `dbt test`. Look for a red `FAIL` line — read which test failed and why.",
+      validate: (s) => testFailed(s, 'stg_orders'),
+    },
+    {
+      id: 'inspect',
+      prompt: "Run `dbt show --select stg_orders` to preview the data. Find the row with the invalid status.",
+      hint: "Look for a row where `status` is not `paid`, `refunded`, or `pending`.",
+      validate: (s) => modelShown(s, 'stg_orders'),
+    },
+    {
+      id: 'fix-sql',
+      prompt: "Fix it in the staging model: add a `where` clause that keeps only valid statuses. Then re-run only that model.",
+      hint: "In `stg_orders.sql`, add `where status in ('paid', 'refunded', 'pending')` as the last line. Then `dbt run --select stg_orders`.",
+      validate: (s) =>
+        modelSqlMatches(s, 'stg_orders', /where\s+status\s+in/i) &&
+        onlyModelsRan(s, ['stg_orders']),
+    },
+    {
+      id: 'fix-test',
+      prompt: "Run `dbt test` again. Both checks should now pass.",
+      hint: "The filter removed the invalid row. `dbt test` should be all green.",
       validate: (s) => allTestsPass(s, 'stg_orders'),
     },
   ],

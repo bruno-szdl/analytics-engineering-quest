@@ -1,8 +1,8 @@
 import type { Lesson } from '../engine/types'
-import { buildSucceeded, fileMatches } from '../engine/validators'
+import { buildSucceeded, fileMatches, modelShown, modelSqlMatches, onlyModelsRan } from '../engine/validators'
 import {
   RAW_CUSTOMERS_CSV,
-  RAW_ORDERS_CSV,
+  RAW_ORDERS_CSV_WITH_FUTURE,
   COUNTRIES_CSV,
   STG_CUSTOMERS_SOURCED,
   STG_ORDERS_SOURCED,
@@ -29,7 +29,7 @@ from {{ ref('stg_users') }}
 where signup_at < '2024-01-01'  -- our company didn't exist yet
 \`\`\`
 
-The project now has tests/ alongside the staging/intermediate/marts folders. We've added one singular test, \`no_future_signups.sql\`, that flags orders dated in the future. Read it, then run \`dbt build\` to see the singular test execute alongside the generic ones.`,
+The project now has tests/ alongside the staging/intermediate/marts folders. We've added one singular test, \`no_future_signups.sql\`, that flags orders dated in the future. This time the raw data has a bad row — you'll see the test catch it, then fix it the same way as before.`,
   initialFiles: {
     'models/staging/_sources.yml': SOURCES_YML,
     'models/staging/_schema.yml': SCHEMA_YML_L9,
@@ -44,7 +44,7 @@ The project now has tests/ alongside the staging/intermediate/marts folders. We'
   },
   seeds: {
     'raw.customers': RAW_CUSTOMERS_CSV,
-    'raw.orders': RAW_ORDERS_CSV,
+    'raw.orders': RAW_ORDERS_CSV_WITH_FUTURE,
     countries: COUNTRIES_CSV,
   },
   tasks: [
@@ -55,8 +55,32 @@ The project now has tests/ alongside the staging/intermediate/marts folders. We'
       validate: (s) => s.openedFiles.has('tests/no_future_signups.sql'),
     },
     {
+      id: 'see-fail',
+      prompt: "Run `dbt build`. One of the singular tests will fail — the raw data has an order dated in the future.",
+      hint: "Type `dbt build`. Look for a red line showing which test failed. The test is telling you something about the data.",
+      validate: (s) =>
+        !s.buildSucceeded &&
+        s.lastRun !== null &&
+        s.lastRun.command === 'build' &&
+        !s.lastRun.usedSelect,
+    },
+    {
+      id: 'show',
+      prompt: "Run `dbt show --select stg_orders` to inspect the data. Find the row dated in the future.",
+      hint: "Look for a row where `created_at` is far in the future — that's the one the test caught.",
+      validate: (s) => modelShown(s, 'stg_orders'),
+    },
+    {
+      id: 'fix-sql',
+      prompt: "Fix it the same way as before: filter the offending row out in the staging model. Then re-run only `stg_orders`.",
+      hint: "In `models/staging/stg_orders.sql`, add `where created_at <= current_date` as the last line. Then `dbt run --select stg_orders`.",
+      validate: (s) =>
+        modelSqlMatches(s, 'stg_orders', /where\s+created_at\s*<=\s*current_date/i) &&
+        onlyModelsRan(s, ['stg_orders']),
+    },
+    {
       id: 'add-test',
-      prompt: "Add a second singular test at `tests/no_negative_revenue.sql` that finds rows in `fct_revenue_by_customer` where revenue is negative (there shouldn't be any, but let's verify).",
+      prompt: "Good. Now add a second singular test at `tests/no_negative_revenue.sql` that finds rows in `fct_revenue_by_customer` where revenue is negative.",
       hint: "Create the file with:\n```\nselect *\nfrom {{ ref('fct_revenue_by_customer') }}\nwhere revenue < 0\n```",
       validate: (s) =>
         fileMatches(s, 'tests/no_negative_revenue.sql', /from\s+\{\{\s*ref\(\s*['"]fct_revenue_by_customer['"]/i) &&
@@ -64,8 +88,8 @@ The project now has tests/ alongside the staging/intermediate/marts folders. We'
     },
     {
       id: 'build',
-      prompt: 'Run `dbt build`. It runs models then every test (generic + singular) in dependency order.',
-      hint: '`dbt build` = `dbt run` + `dbt test`, in DAG order.',
+      prompt: 'Run `dbt build`. All models build and every test — generic and singular — should pass now.',
+      hint: '`dbt build` = `dbt run` + `dbt test`, in DAG order. This time everything should be green.',
       validate: (s) =>
         buildSucceeded(s) &&
         s.lastRun !== null &&
