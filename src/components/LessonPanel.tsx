@@ -3,6 +3,39 @@ import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../store/gameStore'
 import { getLessonById, getLastLessonId, taskKey } from '../lessons'
 import { useLocalizedLesson } from '../i18n/useLocalizedLesson'
+import CourseComplete from './CourseComplete'
+
+/**
+ * Tracks tasks that just transitioned from undone → done so the row +
+ * checkbox play a one-shot completion animation. Returns the set of keys
+ * currently animating; cleared 900ms after the last transition.
+ *
+ * Diff is detected in an effect against the previous render's signature.
+ * The effect's `setState` is intentional (this is the one-shot-animation
+ * pattern), so the relevant lint rule is suppressed locally.
+ */
+function useJustCompleted(keys: string[], doneSet: Set<string>): Set<string> {
+  const prevRef = useRef<Set<string>>(new Set())
+  const [animating, setAnimating] = useState<Set<string>>(new Set())
+  const sig = keys.filter((k) => doneSet.has(k)).join('|')
+
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    const currentDone = new Set(keys.filter((k) => doneSet.has(k)))
+    const newlyDone: string[] = []
+    for (const k of currentDone) {
+      if (!prevRef.current.has(k)) newlyDone.push(k)
+    }
+    prevRef.current = currentDone
+    if (newlyDone.length === 0) return
+    setAnimating(new Set(newlyDone))
+    const t = window.setTimeout(() => setAnimating(new Set()), 900)
+    return () => window.clearTimeout(t)
+  }, [sig])
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  return animating
+}
 
 export default function LessonPanel() {
   const currentLessonId = useGameStore((s) => s.currentLessonId)
@@ -19,6 +52,12 @@ export default function LessonPanel() {
 
   const rawLesson = getLessonById(currentLessonId)
   const lesson = useLocalizedLesson(rawLesson ?? { id: 0, title: '', concept: '', initialFiles: {}, tasks: [] })
+
+  // Compute hook inputs unconditionally so hook order stays stable even when
+  // `rawLesson` is null and we render nothing.
+  const taskKeys = lesson.tasks.map((t) => taskKey(lesson.id, t.id))
+  const justDone = useJustCompleted(taskKeys, completedTasks)
+
   if (!rawLesson) return null
 
   const allTasksDone = lesson.tasks.every((t) =>
@@ -28,26 +67,36 @@ export default function LessonPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--color-surface)' }}>
-      {/* Header */}
-      <div className="shrink-0" style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+      {/* Header: anchored by a 2px orange accent rail on the left, so the
+          lesson title clearly outranks file-tree / DAG chrome of the same hue. */}
+      <div
+        className="shrink-0"
+        style={{
+          padding: '16px 16px 12px',
+          borderBottom: '1px solid var(--color-border)',
+          borderLeft: '2px solid var(--color-accent-orange)',
+          background: 'var(--color-surface)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <span
             style={{
               background: 'var(--color-accent-bg)',
               border: '1px solid var(--color-accent-orange-dim)',
               color: 'var(--color-accent-orange)',
-              fontSize: '0.5625rem',
+              fontSize: '0.625rem',
               fontFamily: 'JetBrains Mono, monospace',
-              padding: '1px 5px',
+              padding: '2px 7px',
               borderRadius: '3px',
               textTransform: 'uppercase' as const,
               letterSpacing: '0.08em',
+              fontWeight: 600,
             }}
           >
             {t('lessonPanel.badge', { current: lesson.id, total: getLastLessonId() })}
           </span>
         </div>
-        <h2 style={{ margin: 0, color: 'var(--color-text)', fontSize: '0.95rem', fontFamily: 'IBM Plex Sans, sans-serif', fontWeight: 700, lineHeight: 1.3 }}>
+        <h2 style={{ margin: 0, color: 'var(--color-text)', fontSize: '1.125rem', fontFamily: 'IBM Plex Sans, sans-serif', fontWeight: 700, lineHeight: 1.25, letterSpacing: '-0.005em' }}>
           {lesson.title}
         </h2>
       </div>
@@ -62,16 +111,18 @@ export default function LessonPanel() {
 
         {/* Tasks */}
         {lesson.tasks.length > 0 && (
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <SectionLabel>{t('lessonPanel.tasks')}</SectionLabel>
+        <div style={{ padding: '16px 16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
+          <SectionLabel accent>{t('lessonPanel.tasks')}</SectionLabel>
           <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {lesson.tasks.map((task, i) => {
               const key = taskKey(lesson.id, task.id)
               const done = completedTasks.has(key)
+              const animateNow = justDone.has(key)
               const hintShown = revealedHints.has(key)
               return (
                 <li
                   key={task.id}
+                  className={animateNow ? 'task-row-glow' : undefined}
                   style={{
                     display: 'flex',
                     gap: '10px',
@@ -79,11 +130,12 @@ export default function LessonPanel() {
                     background: done ? 'var(--color-success-bg)' : 'transparent',
                     border: `1px solid ${done ? 'var(--color-success-border)' : 'var(--color-border-subtle)'}`,
                     borderRadius: '6px',
+                    transition: 'background-color 200ms ease, border-color 200ms ease',
                   }}
                 >
-                  <CheckBox done={done} index={i + 1} />
+                  <CheckBox done={done} index={i + 1} animate={animateNow} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: 'var(--color-text)', fontSize: '0.8125rem', fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.5 }}>
+                    <div style={{ color: 'var(--color-text)', fontSize: '0.875rem', fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.55 }}>
                       <Markdownish text={task.prompt} />
                     </div>
                     {task.hint && !done && (
@@ -193,35 +245,16 @@ export default function LessonPanel() {
         {allTasksDone && (
           <div style={{ padding: '14px 16px' }}>
             {isLast ? (
-              <div style={{
-                padding: '12px',
-                border: '1px solid var(--color-success-border)',
-                background: 'var(--color-success-bg)',
-                borderRadius: '6px',
-                color: 'var(--color-success)',
-                fontSize: '0.8125rem',
-                fontFamily: 'IBM Plex Sans, sans-serif',
-                textAlign: 'center' as const,
-              }}>
-                {t('lessonPanel.courseComplete')}
-              </div>
+              <CourseComplete />
             ) : (
               <button
                 onClick={() => void loadLesson(lesson.id + 1)}
+                className="btn-primary"
                 style={{
                   width: '100%',
-                  background: 'var(--color-success)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: '#0d1117',
-                  fontSize: '0.8125rem',
-                  fontFamily: 'IBM Plex Sans, sans-serif',
-                  fontWeight: 600,
-                  padding: '10px',
-                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  padding: '11px',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
               >
                 {t('lessonPanel.nextLesson')}
               </button>
@@ -320,16 +353,17 @@ function Cell({ label, emphasis, full }: { label: string; emphasis?: boolean; fu
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
   return (
     <div
       style={{
-        color: 'var(--color-text-muted)',
-        fontSize: '0.5625rem',
+        color: accent ? 'var(--color-accent-orange)' : 'var(--color-text-muted)',
+        fontSize: '0.6875rem',
         fontFamily: 'JetBrains Mono, monospace',
         textTransform: 'uppercase' as const,
-        letterSpacing: '0.1em',
-        marginBottom: '10px',
+        letterSpacing: '0.12em',
+        marginBottom: '12px',
+        fontWeight: 600,
       }}
     >
       {children}
@@ -337,9 +371,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function CheckBox({ done, index }: { done: boolean; index: number }) {
+function CheckBox({ done, index, animate }: { done: boolean; index: number; animate?: boolean }) {
   return (
     <span
+      className={animate ? 'task-check-pop' : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -350,11 +385,12 @@ function CheckBox({ done, index }: { done: boolean; index: number }) {
         border: `1.5px solid ${done ? 'var(--color-success)' : 'var(--color-border)'}`,
         borderRadius: '50%',
         background: done ? 'var(--color-success)' : 'transparent',
-        color: done ? '#0d1117' : 'var(--color-text-muted)',
+        color: done ? 'var(--color-on-success)' : 'var(--color-text-muted)',
         fontSize: '0.6875rem',
         fontFamily: 'JetBrains Mono, monospace',
         fontWeight: 700,
         marginTop: '1px',
+        transition: 'background-color 200ms ease, border-color 200ms ease, color 200ms ease',
       }}
     >
       {done ? (
@@ -432,6 +468,8 @@ function QuizBlock({
       </div>
       {picked !== null && (
         <div
+          key={picked}
+          className="quiz-explain-in"
           style={{
             marginTop: '10px',
             padding: '8px 10px',
@@ -495,7 +533,7 @@ function splitBlocks(text: string): string[] {
 function Markdownish({ text }: { text: string }) {
   const blocks = splitBlocks(text)
   return (
-    <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.65 }}>
+    <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.7 }}>
       {blocks.map((block, i) => {
         if (block.startsWith('```')) {
           const code = block.replace(/^```\w*\n?/, '').replace(/\n?```$/, '')

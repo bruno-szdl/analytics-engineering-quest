@@ -2,8 +2,9 @@ import { useGameStore } from '../store/gameStore'
 import { getLastLessonId } from '../lessons'
 
 /**
- * Lesson 0: pure-prose introduction. Rendered as a full-width article
- * instead of the four-panel IDE. Mirrors SQLBolt's first-page pattern.
+ * Lesson 0: full-width article. A small hero (wordmark + tagline + top CTA)
+ * sells the product immediately; the original SQLBolt-style explainer below
+ * gives context for learners who want it before clicking through.
  */
 const codeStyle = {
   fontFamily: 'JetBrains Mono, monospace',
@@ -16,34 +17,122 @@ const codeStyle = {
 
 export default function IntroPage() {
   const loadLesson = useGameStore((s) => s.loadLesson)
+  const completedTasks = useGameStore((s) => s.completedTasks)
+  const last = getLastLessonId()
+  const hasProgress = completedTasks.size > 0
 
   return (
     <div
       className="flex-1 overflow-y-auto"
       style={{ background: 'var(--color-base)', color: 'var(--color-text)' }}
     >
+      {/* ── HERO ────────────────────────────────────────────────────────────── */}
+      <section
+        style={{
+          maxWidth: '760px',
+          margin: '0 auto',
+          padding: '48px 32px 28px',
+          textAlign: 'center' as const,
+        }}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', marginBottom: '12px' }}>
+          <span
+            style={{
+              fontFamily: 'IBM Plex Sans, sans-serif',
+              fontSize: '2.5rem',
+              fontWeight: 700,
+              color: 'var(--color-accent-orange)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            dbt
+          </span>
+          <span
+            style={{
+              fontFamily: 'IBM Plex Sans, sans-serif',
+              fontSize: '2.5rem',
+              fontWeight: 700,
+              color: 'var(--color-text)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            quest
+          </span>
+        </div>
+        <p
+          style={{
+            fontFamily: 'IBM Plex Sans, sans-serif',
+            fontSize: '1.125rem',
+            color: 'var(--color-text-secondary)',
+            margin: '0 auto 6px',
+            maxWidth: '540px',
+            lineHeight: 1.45,
+          }}
+        >
+          Learn dbt in your browser.
+        </p>
+        <p
+          style={{
+            fontFamily: 'IBM Plex Sans, sans-serif',
+            fontSize: '0.9375rem',
+            color: 'var(--color-text-muted)',
+            margin: '0 auto 24px',
+            maxWidth: '540px',
+            lineHeight: 1.55,
+          }}
+        >
+          {last} short interactive lessons. Real SQL, a real warehouse, a real DAG.
+          All running in this page. No install, no signup.
+        </p>
+
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => void loadLesson(1)}
+            className="btn-primary"
+            style={{ fontSize: '0.9375rem', padding: '12px 22px' }}
+          >
+            {hasProgress ? 'Continue learning ›' : 'Begin Lesson 1 ›'}
+          </button>
+          {hasProgress && (
+            <button
+              onClick={() => {
+                if (window.confirm('Start the course over from Lesson 1? Your task progress will be cleared.')) {
+                  try {
+                    localStorage.removeItem('dbt-quest-progress')
+                  } catch { /* ignore */ }
+                  window.location.reload()
+                }
+              }}
+              style={{
+                background: 'transparent',
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '6px',
+                padding: '12px 18px',
+                fontFamily: 'IBM Plex Sans, sans-serif',
+                fontSize: '0.9375rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              Restart course
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ── BODY (original SQLBolt-style explainer) ─────────────────────────── */}
       <article
         style={{
           maxWidth: '760px',
           margin: '0 auto',
-          padding: '48px 32px 80px',
+          padding: '12px 32px 80px',
           fontFamily: 'IBM Plex Sans, sans-serif',
           fontSize: '1rem',
           lineHeight: 1.65,
           color: 'var(--color-text-secondary)',
         }}
       >
-        <h1
-          style={{
-            fontSize: '2rem',
-            fontWeight: 700,
-            margin: '0 0 24px',
-            color: 'var(--color-text)',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Introduction to dbt
-        </h1>
         <p style={{ margin: '0 0 16px' }}>
           Welcome to <strong style={{ color: 'var(--color-text)' }}>dbt-quest</strong>, a series of
           short, interactive lessons designed to help you learn{' '}
@@ -52,7 +141,7 @@ export default function IntroPage() {
             href="https://sqlbolt.com/"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}
+            style={{ color: 'var(--color-accent-orange)', textDecoration: 'underline' }}
           >
             SQLBolt
           </a>.
@@ -106,8 +195,8 @@ export default function IntroPage() {
 
         <SectionHeader>About the lessons</SectionHeader>
         <p style={{ margin: '0 0 16px' }}>
-          There are {getLastLessonId()} short lessons. Each one introduces a single concept, then gives you 3–5
-          small tasks to apply it.
+          There are {last} short lessons. Each one introduces a single concept, then gives you 3–5
+          small tasks to apply it. Your progress saves automatically — close the tab and come back later.
         </p>
         <p style={{ margin: '0 0 16px' }}>
           Go at your pace, edit the SQL freely, and don't worry about breaking things. Every
@@ -129,22 +218,10 @@ export default function IntroPage() {
         <div style={{ marginTop: '40px' }}>
           <button
             onClick={() => void loadLesson(1)}
-            style={{
-              background: 'var(--color-success)',
-              color: '#0d1117',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '12px 22px',
-              fontFamily: 'IBM Plex Sans, sans-serif',
-              fontSize: '0.9375rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+            className="btn-primary"
+            style={{ fontSize: '0.9375rem', padding: '12px 22px' }}
           >
-            Begin Lesson 1: Your first dbt model ›
+            {hasProgress ? 'Continue learning ›' : 'Begin Lesson 1: Your first dbt model ›'}
           </button>
         </div>
 
@@ -183,25 +260,7 @@ function Footer() {
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        color: 'var(--color-text-muted)',
-        textDecoration: 'none',
-        borderBottom: '1px solid var(--color-border)',
-        paddingBottom: '1px',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = 'var(--color-accent-orange)'
-        e.currentTarget.style.borderBottomColor = 'var(--color-accent-orange-dim)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = 'var(--color-text-muted)'
-        e.currentTarget.style.borderBottomColor = 'var(--color-border)'
-      }}
-    >
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-link">
       {children}
     </a>
   )

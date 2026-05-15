@@ -23,6 +23,7 @@ export type { TerminalLine }
 let checkTasksTimer: ReturnType<typeof setTimeout> | null = null
 
 const SEEN_PANELS_KEY = 'dbt-quest-seen-panels'
+const PROGRESS_KEY = 'dbt-quest-progress'
 
 function loadSeenPanels(): Set<PanelKey> {
   const raw = safeStorage.getItem(SEEN_PANELS_KEY)
@@ -38,6 +39,41 @@ function loadSeenPanels(): Set<PanelKey> {
 
 function persistSeenPanels(seen: Set<PanelKey>): void {
   safeStorage.setItem(SEEN_PANELS_KEY, JSON.stringify([...seen]))
+}
+
+interface PersistedProgress {
+  currentLessonId: number
+  completedTasks: string[]
+  correctQuizzes: number[]
+}
+
+function loadProgress(): PersistedProgress | null {
+  const raw = safeStorage.getItem(PROGRESS_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const p = parsed as Record<string, unknown>
+    const currentLessonId = typeof p.currentLessonId === 'number' ? p.currentLessonId : 0
+    const completedTasks = Array.isArray(p.completedTasks)
+      ? p.completedTasks.filter((v): v is string => typeof v === 'string')
+      : []
+    const correctQuizzes = Array.isArray(p.correctQuizzes)
+      ? p.correctQuizzes.filter((v): v is number => typeof v === 'number')
+      : []
+    return { currentLessonId, completedTasks, correctQuizzes }
+  } catch {
+    return null
+  }
+}
+
+function persistProgress(state: Pick<StoreState, 'currentLessonId' | 'completedTasks' | 'correctQuizzes'>): void {
+  const payload: PersistedProgress = {
+    currentLessonId: state.currentLessonId,
+    completedTasks: [...state.completedTasks],
+    correctQuizzes: [...state.correctQuizzes],
+  }
+  safeStorage.setItem(PROGRESS_KEY, JSON.stringify(payload))
 }
 
 interface StoreState {
@@ -102,6 +138,8 @@ function seedTableName(key: string): string {
   return key
 }
 
+const initialProgress = loadProgress()
+
 export const useGameStore = create<StoreState>()(
     (set, get) => ({
       files: {},
@@ -123,9 +161,9 @@ export const useGameStore = create<StoreState>()(
       lastRun: null,
       dagSelection: null,
 
-      currentLessonId: 0,
-      completedTasks: new Set<string>(),
-      correctQuizzes: new Set<number>(),
+      currentLessonId: initialProgress?.currentLessonId ?? 0,
+      completedTasks: new Set<string>(initialProgress?.completedTasks ?? []),
+      correctQuizzes: new Set<number>(initialProgress?.correctQuizzes ?? []),
       revealedHints: new Set<string>(),
 
       bottomTab: 'commands',
@@ -222,7 +260,7 @@ export const useGameStore = create<StoreState>()(
       runCommand: async (input: string) => {
         if (get().running) return
 
-        const cmdLine: TerminalLine = { text: `type here > ${input}` }
+        const cmdLine: TerminalLine = { text: `dbt-quest ❯ ${input}` }
         const parsed = parseCommand(input)
 
         if (!parsed.ok) {
@@ -316,7 +354,7 @@ export const useGameStore = create<StoreState>()(
         set((s) => ({
           running: true,
           bottomTab: 'results',
-          terminalHistory: [...s.terminalHistory, { text: `type here > dbt show --select ${name}` }],
+          terminalHistory: [...s.terminalHistory, { text: `dbt-quest ❯ dbt show --select ${name}` }],
         }))
         try {
           if (!get().ranModels.has(name)) {
@@ -407,6 +445,7 @@ export const useGameStore = create<StoreState>()(
             { text: 'Preparing DuckDB…', color: 'gray' },
           ],
         })
+        persistProgress(get())
 
         try {
           await resetDb()
@@ -475,7 +514,10 @@ export const useGameStore = create<StoreState>()(
           next.add(key)
           changed = true
         }
-        if (changed) set({ completedTasks: next })
+        if (changed) {
+          set({ completedTasks: next })
+          persistProgress({ ...get(), completedTasks: next })
+        }
       },
 
       revealHint: (lessonId, taskId) =>
@@ -483,10 +525,11 @@ export const useGameStore = create<StoreState>()(
           revealedHints: new Set([...s.revealedHints, taskKey(lessonId, taskId)]),
         })),
 
-      markQuizCorrect: (lessonId) =>
-        set((s) => ({
-          correctQuizzes: new Set([...s.correctQuizzes, lessonId]),
-        })),
+      markQuizCorrect: (lessonId) => {
+        const next = new Set([...get().correctQuizzes, lessonId])
+        set({ correctQuizzes: next })
+        persistProgress({ ...get(), correctQuizzes: next })
+      },
 
       dismissPanelReveal: (panel) =>
         set((s) => {

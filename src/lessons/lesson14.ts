@@ -32,7 +32,7 @@ const lesson14: Lesson = {
 1. **Seeds** - loads CSV files from \`seeds/\` into the warehouse
 2. **Models** - materializes each model in dependency order
 3. **Tests** - runs tests immediately after each model, and skips downstream models if one fails
-4. **Snapshots** - captures slowly-changing dimension history (not covered in these lessons)
+4. **Snapshots** - captures slowly-changing-dimension history (not covered in this course; see the dbt docs link below)
 
 That last point is the safety net: no broken upstream data quietly poisons a dashboard.
 
@@ -78,8 +78,8 @@ Run \`dbt build\` and watch the whole project go.`,
     {
       id: 'skip',
       prompt:
-        "See the safety net in action. In `models/staging/_schema.yml`, remove `'pending'` from the `accepted_values` list on `stg_orders.status`, then run `dbt build` again. Order 106 is `pending`, so the test on `stg_orders` now fails -watch `int_paid_orders` and `fct_revenue_by_customer` get **skipped** instead of built on bad data.",
-      hint: "The list should become `values: ['paid', 'refunded']`. Save the file, then run `dbt build`.",
+        "See the safety net in action. Edit `models/staging/_schema.yml` so the `accepted_values` test on `stg_orders.status` no longer allows the value present in order 106. Then `dbt build` again and watch what happens to the models downstream of `stg_orders`.",
+      hint: "Order 106 has status `pending`. Drop `'pending'` from the `accepted_values` list so the list becomes `values: ['paid', 'refunded']`, save, then run `dbt build`. `int_paid_orders` and `fct_revenue_by_customer` should be **skipped** rather than built on bad data.",
       validate: (s) => testFailed(s, 'stg_orders'),
     },
   ],
@@ -96,6 +96,7 @@ Run \`dbt build\` and watch the whole project go.`,
   },
   furtherReading: [
     { label: 'dbt build command', url: 'https://docs.getdbt.com/reference/commands/build' },
+    { label: 'Snapshots (not covered here)', url: 'https://docs.getdbt.com/docs/build/snapshots' },
   ],
 }
 

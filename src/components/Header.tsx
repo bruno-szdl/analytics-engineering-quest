@@ -65,22 +65,11 @@ function ExternalIconLink({ href, label, children }: { href: string; label: stri
       rel="noopener noreferrer"
       title={label}
       aria-label={label}
-      className="flex items-center justify-center rounded"
+      className="icon-btn flex items-center justify-center"
       style={{
         width: '28px',
         height: '28px',
-        background: 'transparent',
-        border: '1px solid var(--color-border)',
-        color: 'var(--color-text-muted)',
         textDecoration: 'none',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-muted)'
-        e.currentTarget.style.color = 'var(--color-text)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-border)'
-        e.currentTarget.style.color = 'var(--color-text-muted)'
       }}
     >
       {children}
@@ -152,11 +141,11 @@ function LessonSelector({ compact = false }: { compact?: boolean }) {
             flexShrink: 0,
           }}
         >
-          {currentLessonId || '—'}
+          {currentLessonId || '-'}
         </span>
         {lesson && (
           <>
-            <span style={{ color: 'var(--color-muted)', fontSize: '0.75rem', flexShrink: 0 }}>—</span>
+            <span style={{ color: 'var(--color-muted)', fontSize: '0.75rem', flexShrink: 0 }}>-</span>
             <span
               style={{
                 color: 'var(--color-text-muted)',
@@ -195,7 +184,11 @@ function LessonSelector({ compact = false }: { compact?: boolean }) {
             border: '1px solid var(--color-border)',
             borderRadius: '8px',
             padding: '6px',
-            width: '300px',
+            // Cap to viewport width minus a small breathing margin so the
+            // dropdown never overflows on a 320px device.
+            width: 'min(300px, calc(100vw - 24px))',
+            maxHeight: 'calc(100vh - 80px)',
+            overflowY: 'auto',
             zIndex: 100,
             boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
           }}
@@ -287,25 +280,13 @@ function LangToggleButton() {
     <button
       onClick={toggle}
       title="Change language"
-      className="flex items-center justify-center rounded"
+      className="icon-btn flex items-center justify-center"
       style={{
         height: '28px',
         padding: '0 7px',
-        background: 'transparent',
-        border: '1px solid var(--color-border)',
-        color: 'var(--color-text-muted)',
-        cursor: 'pointer',
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '0.625rem',
         letterSpacing: '0.05em',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-muted)'
-        e.currentTarget.style.color = 'var(--color-text)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-border)'
-        e.currentTarget.style.color = 'var(--color-text-muted)'
       }}
     >
       {current.toUpperCase()}
@@ -323,22 +304,10 @@ function ThemeToggleButton() {
     <button
       onClick={toggleTheme}
       title={isDark ? t('header.lightMode') : t('header.darkMode')}
-      className="flex items-center justify-center rounded"
+      className="icon-btn flex items-center justify-center"
       style={{
         width: '28px',
         height: '28px',
-        background: 'transparent',
-        border: '1px solid var(--color-border)',
-        color: 'var(--color-text-muted)',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-muted)'
-        e.currentTarget.style.color = 'var(--color-text)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-border)'
-        e.currentTarget.style.color = 'var(--color-text-muted)'
       }}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}

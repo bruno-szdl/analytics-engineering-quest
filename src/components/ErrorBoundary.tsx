@@ -25,7 +25,9 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    safeStorage.removeItem('dbt-quest-store')
+    safeStorage.removeItem('dbt-quest-store') // legacy key, harmless if absent
+    safeStorage.removeItem('dbt-quest-progress')
+    safeStorage.removeItem('dbt-quest-seen-panels')
     window.location.reload()
   }
 

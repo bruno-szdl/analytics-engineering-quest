@@ -119,8 +119,8 @@ models:
     },
     {
       id: 'fix-sql',
-      prompt: 'Fix it the way you would in a real project: you can\'t edit raw data, so filter it out in the model. Add `where email is not null` to `stg_customers.sql`, then rebuild just that model with `dbt run --select stg_customers`.',
-      hint: "In `models/stg_customers.sql`, add `where email is not null` as the last line. Then run `dbt run --select stg_customers` to re-materialize only that model with the filter applied.",
+      prompt: "Fix it the way you would in a real project: you can't edit raw data, so filter the offending row out in the staging model. Then re-run only that model to apply the fix.",
+      hint: "In `models/stg_customers.sql`, add `where email is not null` as the last line. Then `dbt run --select stg_customers` re-materializes only that model with the filter applied.",
       validate: (s) =>
         modelSqlMatches(s, 'stg_customers', /where\s+email\s+is\s+not\s+null/i) &&
         onlyModelsRan(s, ['stg_customers']),

@@ -27,7 +27,7 @@ That's what the \`--select\` flag is for:
 dbt run --select stg_customers
 \`\`\`
 
-This builds only \`stg_customers\` and nothing else. There's a shorthand too -\`-s\` means exactly the same thing:
+This materializes only \`stg_customers\` and nothing else. There's a shorthand too -\`-s\` means exactly the same thing:
 
 \`\`\`bash
 dbt run -s stg_customers
@@ -64,20 +64,20 @@ In this lesson the project is already built. You'll make a small change to one m
     },
     {
       id: 'select-one',
-      prompt: 'Rebuild just that model: run `dbt run --select stg_customers`. Notice the graph dims everything else as you type.',
-      hint: 'Type `dbt run --select stg_customers` at the prompt. Only one model should build.',
+      prompt: 'You just edited `stg_customers`. Re-run only that model so the change lands in the warehouse — without re-running the rest of the project. Watch the graph dim everything else as you type.',
+      hint: '`dbt run --select stg_customers` narrows the run to a single model.',
       validate: (s) => onlyModelsRan(s, ['stg_customers']),
     },
     {
       id: 'select-short-flag',
-      prompt: 'Now use the `-s` shorthand to target a different model: run `dbt run -s dim_customers`.',
-      hint: '`-s` is just an alias for `--select`. `dbt run -s dim_customers` rebuilds only `dim_customers`.',
+      prompt: 'Try the shorthand for `--select` to re-run just `dim_customers`.',
+      hint: '`-s` is an alias for `--select`. So: `dbt run -s dim_customers`.',
       validate: (s) => lastRunSelected(s, ['dim_customers']),
     },
     {
       id: 'run-all',
-      prompt: "Finally, run a plain `dbt run` (no `--select`) to rebuild the whole project and confirm everything is consistent again.",
-      hint: "When you genuinely want every model rebuilt, drop the flag entirely: `dbt run`.",
+      prompt: 'Now put the whole project back in sync.',
+      hint: 'Drop the selector entirely: `dbt run`.',
       validate: (s) =>
         buildSucceeded(s) &&
         s.lastRun !== null &&

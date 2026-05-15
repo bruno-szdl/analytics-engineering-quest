@@ -110,20 +110,28 @@ function ModelNode({ data }: { data: ModelNodeData }) {
   return (
     <div
       className={data.hasCycle ? 'node-cycle' : ''}
+      title={`${data.layer} - ${statusLabel}`}
       style={{
         background: 'var(--color-surface)',
         backgroundColor: bg,
         border: `1px solid ${borderColor}`,
         borderRadius: '6px',
-        padding: '7px 12px',
+        paddingLeft: '14px',
+        paddingRight: '12px',
+        paddingTop: '9px',
+        paddingBottom: '9px',
         width: NODE_W,
         minHeight: NODE_H,
         display: 'flex',
-        flexDirection: 'column',
-        gap: '2px',
+        alignItems: 'center',
+        gap: '10px',
         position: 'relative',
         opacity: data.isFaded ? 0.25 : 1,
         transition: 'opacity 150ms ease',
+        // Layer color now reads as a 4px left edge bar — replaces the tiny
+        // uppercase "STAGING / MART" pill that looked like a typo. The
+        // legend in the intro already teaches the color → layer mapping.
+        boxShadow: `inset 4px 0 0 0 ${color}`,
       }}
     >
       <Handle
@@ -132,47 +140,13 @@ function ModelNode({ data }: { data: ModelNodeData }) {
         style={{ background: color, border: 'none', width: 8, height: 8 }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span
-          style={{
-            color,
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.5625rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            opacity: 0.8,
-          }}
-        >
-          {data.layer}
-        </span>
-        <span
-          aria-label={statusLabel}
-          title={statusLabel}
-          style={{
-            width: 12,
-            height: 12,
-            borderRadius: '50%',
-            background: statusDot,
-            color: '#fff',
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '0.5rem',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            lineHeight: 1,
-          }}
-        >
-          {statusGlyph}
-        </span>
-      </div>
-
       <div
         style={{
+          flex: 1,
+          minWidth: 0,
           color: 'var(--color-text)',
           fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.6875rem',
+          fontSize: '0.75rem',
           fontWeight: 500,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -181,6 +155,28 @@ function ModelNode({ data }: { data: ModelNodeData }) {
       >
         {data.label}
       </div>
+
+      <span
+        aria-label={statusLabel}
+        title={statusLabel}
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: '50%',
+          background: statusDot,
+          color: '#fff',
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: '0.5rem',
+          fontWeight: 700,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          lineHeight: 1,
+        }}
+      >
+        {statusGlyph}
+      </span>
 
       <Handle
         type="source"

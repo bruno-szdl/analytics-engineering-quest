@@ -28,7 +28,10 @@ export default function App() {
     if (initializedRef.current) return
     initializedRef.current = true
     const fromHash = parseLessonHash()
-    const resumeId = fromHash ?? 0
+    // Resume order: explicit hash → persisted lesson → intro (0). The store
+    // restores `currentLessonId` from localStorage in its initializer, so
+    // returning learners land on the last lesson they had open.
+    const resumeId = fromHash ?? useGameStore.getState().currentLessonId ?? 0
     loadLesson(resumeId).catch((err) => {
       console.error('Failed to initialise lesson on startup:', err)
     })

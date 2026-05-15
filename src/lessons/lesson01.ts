@@ -14,7 +14,7 @@ The project already has one model: \`stg_customers.sql\`. It reads from a raw ta
 
 Two commands you'll use constantly:
 
-- \`dbt run\`: builds every model. After it finishes, \`stg_customers\` will appear in the **Database** panel as a view.
+- \`dbt run\`: materializes every model. After it finishes, \`stg_customers\` will appear in the **Database** panel as a view.
 
 - \`dbt show --select <model>\`: previews the rows of a model.
 
@@ -26,7 +26,7 @@ Try them below.`,
   tasks: [
     {
       id: 'run',
-      prompt: 'Run `dbt run` in the terminal to build every model in the project.',
+      prompt: 'Run `dbt run` in the terminal to build the stg_customers model in your Database.',
       hint: 'Type `dbt run` at the prompt and press Enter.',
       validate: (s) => modelRan(s, 'stg_customers'),
     },
@@ -38,10 +38,15 @@ Try them below.`,
     },
   ],
   quiz: {
-    question: 'Which command builds your models against the warehouse?',
-    options: ['dbt compile', 'dbt run', 'dbt execute', 'dbt deploy'],
+    question: 'You want to materialize your models in the warehouse — but you don\'t want to run any tests yet. Which command does exactly that?',
+    options: [
+      '`dbt compile` — turns Jinja into SQL only',
+      '`dbt run` — materializes models, no tests',
+      '`dbt build` — materializes models *and* runs tests',
+      '`dbt test` — runs tests on already-built models',
+    ],
     correctIndex: 1,
-    explanation: '`dbt run` compiles every model into SQL and materializes it as a view or table.',
+    explanation: '`dbt run` is the build-without-test path. `dbt build` does both in one go (you\'ll meet it later); `dbt compile` only renders the Jinja and stops; `dbt test` runs tests on what is already in the warehouse.',
   },
   goal: {
     dagShape: {

@@ -14,7 +14,7 @@ const lesson04: Lesson = {
   id: 4,
   title: 'Materializations: view vs table',
   panels: ['lineage', 'files', 'warehouse'],
-  concept: `By default, every dbt model becomes a **view** (a saved query that re-runs every time it's selected). Views are cheap to build but slow to query.
+  concept: `By default, every dbt model becomes a **view** (a saved query that re-runs every time it's selected). Views are cheap to build but slow to query. (You can change the default project-wide in \`dbt_project.yml\`, but per-model is the override you'll see most.)
 
 When a model is queried frequently or is expensive to compute, you'll want a **table** (the result is physically stored). You switch the **materialization** with a config block at the top of the model:
 
@@ -68,15 +68,15 @@ Our project's marts get hit often by downstream consumers. Convert \`dim_custome
     },
   ],
   quiz: {
-    question: 'When should you prefer a table materialization over a view?',
+    question: 'A mart is rebuilt once a night and queried hundreds of times during the day by a BI dashboard. View or table?',
     options: [
-      'Always. Tables are faster',
-      'Never. Views are cheaper',
-      "When the model is queried often or is expensive to compute",
-      'Only on the first run',
+      'View — the query is simple, so re-running it each time is cheap',
+      'Table — pay the compute once at build time so every dashboard read is fast',
+      'View — tables can\'t be queried by BI tools',
+      'Doesn\'t matter — dbt picks the optimal materialization automatically',
     ],
-    correctIndex: 2,
-    explanation: 'Tables trade build time for query time. Use them when the read cost outweighs the build cost (typically marts and dashboards).',
+    correctIndex: 1,
+    explanation: 'Tables trade build cost for read cost. Once a model is queried far more often than it\'s rebuilt — exactly the dashboard pattern — materializing as a table pays for itself many times over.',
   },
   furtherReading: [
     { label: 'Materializations', url: 'https://docs.getdbt.com/docs/build/materializations' },

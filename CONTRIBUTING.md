@@ -61,7 +61,7 @@ These keep the learner experience predictable. Please preserve them:
      requiredSteps: ['files', 'run', 'test'], // checklist items shown to the player
      manualCompletion: true,               // optional: gate completion on a "Mark complete" click
      goal: {
-       description: 'Run dbt run to build foo.',
+       description: 'Run dbt run to foo.',
        dagShape: { nodes: [...], edges: [...] }, // optional, for the Goal DAG preview
      },
      validate: (state) => {

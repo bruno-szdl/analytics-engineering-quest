@@ -4,6 +4,7 @@
 @theme {
   --color-base: #0d1117;
   --color-surface: #161b22;
+  --color-surface-raised: #1c2128;
   --color-terminal-bg: #0a0e14;
   --color-dag-bg: #080c12;
   --color-hint-bg: #1c2128;
@@ -21,8 +22,16 @@
   --color-success: #3fb950;
   --color-success-bg: #3fb95015;
   --color-success-border: #3fb95030;
+  --color-on-accent: #0d1117;
+  --color-on-success: #0d1117;
   --color-fail: #f85149;
   --color-warning: #d29922;
+
+  /* Pulse colors — referenced from animation keyframes so they pick up the
+     theme automatically without duplicating keyframe definitions. */
+  --pulse-cycle-color: rgba(248, 81, 73, 0.5);
+  --pulse-success-color: rgba(63, 185, 80, 0.45);
+  --pulse-reveal-color: rgba(255, 105, 74, 0.55);
 
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -31,9 +40,10 @@
 [data-theme="light"] {
   --color-base: #ffffff;
   --color-surface: #f6f8fa;
-  --color-terminal-bg: #f0f2f4;
+  --color-surface-raised: #ffffff;
+  --color-terminal-bg: #f6f8fa;
   --color-dag-bg: #f6f8fa;
-  --color-hint-bg: #f6f8fa;
+  --color-hint-bg: #fff8c5;
   --color-border: #d0d7de;
   --color-border-subtle: #eaeef2;
   --color-muted: #656c76;
@@ -46,8 +56,14 @@
   --color-success: #1a7f37;
   --color-success-bg: #1a7f3715;
   --color-success-border: #1a7f3730;
+  --color-on-accent: #ffffff;
+  --color-on-success: #ffffff;
   --color-fail: #cf222e;
   --color-warning: #9a6700;
+
+  --pulse-cycle-color: rgba(207, 34, 46, 0.45);
+  --pulse-success-color: rgba(26, 127, 55, 0.4);
+  --pulse-reveal-color: rgba(224, 90, 58, 0.55);
 }
 
 /* Type scale: bump root font-size 10% on desktop so all rem-based typography
@@ -102,9 +118,90 @@ body {
   background: var(--color-muted);
 }
 
+/* ── Utility classes ──────────────────────────────────────────────────────── */
+
+/* Universal focus-visible ring. Reaches every focusable element that doesn't
+   set its own outline. Inline-style hover handlers ignore :focus-visible, so
+   buttons that opt out of these classes also opt out of keyboard affordance.
+   Prefer the .icon-btn / .row-hover / .text-link classes for new code. */
+:where(button, a, [role="button"], [role="tab"], [role="listbox"] > *, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--color-accent-orange);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Small 28x28 square icon button (header items, theme toggle, etc.). */
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.icon-btn:hover {
+  border-color: var(--color-muted);
+  color: var(--color-text);
+}
+
+/* List row that grows a subtle hover wash. Use for dropdown items, file entries. */
+.row-hover {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.row-hover:hover {
+  background: var(--color-border-subtle);
+}
+
+.row-hover:hover .row-hover-fade {
+  color: var(--color-text);
+}
+
+/* Inline text link that animates underline + color on hover. */
+.text-link {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 1px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.text-link:hover {
+  color: var(--color-accent-orange);
+  border-bottom-color: var(--color-accent-orange-dim);
+}
+
+/* Primary CTA — brand orange. Used for "begin" / "next lesson" so success
+   green is reserved for completion states. */
+.btn-primary {
+  background: var(--color-accent-orange);
+  color: var(--color-on-accent);
+  border: none;
+  border-radius: 6px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+
 @keyframes pulse-cycle {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.5); }
-  50%       { box-shadow: 0 0 0 8px rgba(248, 81, 73, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--pulse-cycle-color); }
+  50%       { box-shadow: 0 0 0 8px transparent; }
 }
 
 .node-cycle {
@@ -112,17 +209,81 @@ body {
 }
 
 @keyframes pulse-success {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.45); }
-  50%       { box-shadow: 0 0 0 7px rgba(63, 185, 80, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--pulse-success-color); }
+  50%       { box-shadow: 0 0 0 7px transparent; }
 }
 
 .btn-pulse-success {
   animation: pulse-success 1.4s ease-in-out infinite;
 }
 
+/* Finite (3-cycle) version of panel-reveal-pulse. Infinite pulsing in
+   peripheral vision while reading the lesson concept was distracting. */
 @keyframes panel-reveal-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 105, 74, 0.55); }
-  50%      { box-shadow: 0 0 0 6px rgba(255, 105, 74, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--pulse-reveal-color); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+
+.badge-pulse-finite {
+  animation: panel-reveal-pulse 1.6s ease-in-out 3;
+}
+
+/* Task completion micro-interactions. One-shot: applied to the checkbox the
+   first time a task transitions from undone -> done. */
+@keyframes task-check-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.task-check-pop {
+  animation: task-check-pop 280ms ease-out 1;
+}
+
+@keyframes task-row-glow {
+  0%   { box-shadow: 0 0 0 0 var(--pulse-success-color); }
+  60%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.task-row-glow {
+  animation: task-row-glow 700ms ease-out 1;
+}
+
+/* Quiz explanation reveal */
+@keyframes slide-fade-in {
+  0%   { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.quiz-explain-in {
+  animation: slide-fade-in 200ms ease-out 1;
+}
+
+/* Confetti sparkle — one-shot, used on the final task of the final lesson */
+@keyframes sparkle-pop {
+  0%   { opacity: 0; transform: scale(0) translateY(0); }
+  20%  { opacity: 1; transform: scale(1) translateY(-6px); }
+  100% { opacity: 0; transform: scale(0.6) translateY(-40px); }
+}
+
+.sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: sparkle-pop 900ms ease-out 1 forwards;
+}
+
+/* Terminal caret — blinks when the input is empty and focused. */
+@keyframes caret-blink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.caret-blink {
+  animation: caret-blink 1.05s steps(2, start) infinite;
 }
 
 /* React Flow overrides */

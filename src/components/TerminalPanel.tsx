@@ -123,29 +123,30 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
       {/* Output */}
       <div
         ref={outputRef}
-        className="flex-1 overflow-y-auto px-4 py-3"
+        className="flex-1 overflow-y-auto px-4 py-3 relative"
         style={{ scrollBehavior: 'smooth' }}
       >
         {terminalHistory.length === 0 ? (
           <div
             style={{
-              height: '100%',
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 12,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
+              gap: '6px',
               color: 'var(--color-text-muted)',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.6875rem',
-              opacity: 0.5,
+              opacity: 0.55,
               userSelect: 'none',
             }}
           >
-            <span>type your commands below</span>
-            <svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true">
-              <line x1="8" y1="0" x2="8" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <polyline points="3,10 8,16 13,10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <span>type a dbt command below - try <span style={{ color: 'var(--color-accent-orange)' }}>dbt run</span></span>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2v10M4 9l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
         ) : (
@@ -167,21 +168,25 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
         )}
       </div>
 
-      {/* Input row */}
+      {/* Input row — same surface as the output so the prompt feels like part
+          of the terminal rather than a separate footer (the previous version
+          looked like a stray white bar in light mode). */}
       <div
         className="flex items-center gap-0 px-4 shrink-0"
-        style={{ height: '36px', background: 'var(--color-base)', borderTop: '1px solid var(--color-border)' }}
+        style={{ height: '36px', background: 'var(--color-terminal-bg)', borderTop: '1px solid var(--color-border-subtle)' }}
       >
         <span
+          aria-hidden="true"
           style={{
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '0.75rem',
             color: 'var(--color-accent-orange)',
             userSelect: 'none',
             flexShrink: 0,
+            fontWeight: 600,
           }}
         >
-        type here&nbsp;&gt;&nbsp;
+          dbt-quest&nbsp;❯&nbsp;
         </span>
         <input
           ref={inputRef}
@@ -202,7 +207,7 @@ export default function TerminalPanel({ embedded = false }: TerminalPanelProps) 
             color: 'var(--color-text)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '0.75rem',
-            caretColor: 'var(--color-text)',
+            caretColor: 'var(--color-accent-orange)',
           }}
         />
       </div>

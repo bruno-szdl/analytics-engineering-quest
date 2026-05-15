@@ -33,21 +33,22 @@ export default function PanelRevealBadge({ panel }: { panel: PanelKey }) {
         if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); dismiss(panel) }
       }}
       aria-label={`New panel: ${panel}. Click to dismiss.`}
+      className="badge-pulse-finite"
       style={{
         marginLeft: '6px',
-        padding: '1px 6px',
+        padding: '2px 8px',
         background: 'var(--color-accent-orange)',
-        color: 'var(--color-base)',
+        color: 'var(--color-on-accent)',
         borderRadius: '999px',
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '0.5625rem',
+        fontSize: '0.625rem',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
+        fontWeight: 600,
         cursor: 'pointer',
-        animation: 'panel-reveal-pulse 1.6s ease-in-out infinite',
       }}
     >
-      New
+      Unlocked
     </span>
   )
 }

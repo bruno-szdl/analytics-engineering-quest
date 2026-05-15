@@ -48,8 +48,8 @@ In this lesson the team has dropped a \`seeds/countries.csv\` lookup into the pr
     },
     {
       id: 'seed',
-      prompt: 'Run `dbt seed` in the terminal to load `countries.csv` into the warehouse.',
-      hint: 'Type `dbt seed` at the prompt and press Enter. Only `dbt seed` loads CSVs -`dbt run` will not.',
+      prompt: 'The CSV is sitting on disk but the warehouse has no `countries` table yet. Load it.',
+      hint: '`dbt seed` is the command that turns CSVs in `seeds/` into warehouse tables. `dbt run` does not.',
       validate: (s) => seedLoaded(s, 'countries'),
     },
     {
@@ -71,15 +71,15 @@ In this lesson the team has dropped a \`seeds/countries.csv\` lookup into the pr
     },
   ],
   quiz: {
-    question: 'Which kind of data is a seed best suited for?',
+    question: 'Your team has a 50M-row events table refreshed every hour from Kafka. A teammate suggests loading it via `dbt seed` so it lives in the repo. What\'s wrong with that?',
     options: [
-      'Millions of rows of event data',
-      'Small, slow-changing reference data like country codes',
-      'Production transactions',
-      'Real-time streaming data',
+      'Nothing — that\'s exactly what seeds are for',
+      'Seeds can\'t be referenced with `ref()`',
+      'Seeds are for small, slow-changing CSVs — a 50M-row hourly stream belongs as a source, not in version control',
+      '`dbt seed` would work but only on the dev target, not in prod',
     ],
-    correctIndex: 1,
-    explanation: 'Seeds are CSVs in your repo -they go through code review and are tiny. Anything large or fast-changing belongs in your warehouse, not in a CSV.',
+    correctIndex: 2,
+    explanation: 'Seeds are checked-in CSVs reviewed in PRs — perfect for country codes, status mappings, currency rates. Putting a 50M-row stream in git would bloat the repo and lose hourly updates the moment the file is committed. That data belongs in the warehouse, accessed via a `source`.',
   },
   furtherReading: [
     { label: 'Seeds', url: 'https://docs.getdbt.com/docs/build/seeds' },

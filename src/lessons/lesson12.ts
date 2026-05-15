@@ -76,8 +76,8 @@ Watch the lineage graph as you type each selector below: it lights up exactly th
   tasks: [
     {
       id: 'union',
-      prompt: 'Rebuild both staging models in one command: run `dbt run --select stg_customers stg_orders`.',
-      hint: 'Separate the two model names with a space -that selects the union of both.',
+      prompt: 'Re-run both staging models in a single command using a union selector.',
+      hint: '`dbt run --select stg_customers stg_orders` — separating model names with a space selects the union of both.',
       validate: (s) => lastRunSelected(s, ['stg_customers', 'stg_orders']),
     },
     {
@@ -90,8 +90,8 @@ Watch the lineage graph as you type each selector below: it lights up exactly th
     },
     {
       id: 'upstream',
-      prompt: 'Now rebuild a mart and everything it depends on: run `dbt run --select +fct_revenue_by_customer`.',
-      hint: 'A leading `+` selects the model and all of its ancestors: `+fct_revenue_by_customer`.',
+      prompt: 'Now re-run `fct_revenue_by_customer` together with every model it depends on, in dependency order.',
+      hint: 'A leading `+` selects the model and all of its ancestors: `dbt run --select +fct_revenue_by_customer`.',
       validate: (s) => usedUpstreamOperator(s, 'fct_revenue_by_customer'),
     },
     {
