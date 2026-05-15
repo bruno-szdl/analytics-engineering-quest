@@ -38,7 +38,10 @@ function buildTree(files: Record<string, string>): TreeNode[] {
       current = dir.children
     }
 
-    current.push({ type: 'file', name: parts[parts.length - 1], path: filePath })
+    const fileName = parts[parts.length - 1]
+    if (fileName !== '.gitkeep') {
+      current.push({ type: 'file', name: fileName, path: filePath })
+    }
   }
 
   return root
@@ -332,6 +335,7 @@ interface ItemProps {
   creatingInDir: string | null
   alwaysShowActions: boolean
   files: Record<string, string>
+  dragOverDir: string | null
   onOpen: (path: string) => void
   onDelete: (path: string) => void
   onCreateInDir: (dirPath: string) => void
@@ -340,6 +344,11 @@ interface ItemProps {
   onStartRename: (path: string) => void
   onCommitRename: (oldPath: string, newName: string) => void
   onCancelRename: () => void
+  onDragStart: (path: string) => void
+  onDragEnd: () => void
+  onDragEnterDir: (dirPath: string) => void
+  onDragLeaveDir: (dirPath: string) => void
+  onDropOnDir: (dirPath: string) => void
 }
 
 function DirItem({ node, depth, ...rest }: ItemProps & { node: DirNode }) {
@@ -347,10 +356,15 @@ function DirItem({ node, depth, ...rest }: ItemProps & { node: DirNode }) {
   const [hovered, setHovered] = useState(false)
   const indent = 8 + depth * 14
   const isCreatingHere = rest.creatingInDir === node.path
+  const isDragOver = rest.dragOverDir === node.path
   const showActions = hovered || rest.alwaysShowActions || isCreatingHere
 
   return (
-    <div>
+    <div
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; rest.onDragEnterDir(node.path) }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) rest.onDragLeaveDir(node.path) }}
+      onDrop={(e) => { e.preventDefault(); rest.onDropOnDir(node.path) }}
+    >
       <div
         style={{ position: 'relative' }}
         onMouseEnter={() => setHovered(true)}
@@ -361,8 +375,9 @@ function DirItem({ node, depth, ...rest }: ItemProps & { node: DirNode }) {
           className="flex items-center gap-1 w-full"
           style={{
             padding: `3px 28px 3px ${indent}px`,
-            background: 'transparent',
+            background: isDragOver ? 'var(--color-accent-bg)' : 'transparent',
             border: 'none',
+            borderLeft: `2px solid ${isDragOver ? 'var(--color-accent-orange)' : 'transparent'}`,
             cursor: 'pointer',
             color: 'var(--color-text-secondary)',
             fontSize: '0.6875rem',
@@ -371,8 +386,8 @@ function DirItem({ node, depth, ...rest }: ItemProps & { node: DirNode }) {
             userSelect: 'none',
             boxSizing: 'border-box',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-border-subtle)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          onMouseEnter={(e) => { if (!isDragOver) e.currentTarget.style.background = 'var(--color-border-subtle)' }}
+          onMouseLeave={(e) => { if (!isDragOver) e.currentTarget.style.background = 'transparent' }}
         >
           <ChevronIcon expanded={expanded} />
           <FolderIcon open={expanded} />
@@ -459,6 +474,9 @@ function FileItem({ node, depth, ...rest }: ItemProps & { node: FileNode }) {
       onMouseLeave={() => setHovered(false)}
     >
       <button
+        draggable
+        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; rest.onDragStart(node.path) }}
+        onDragEnd={rest.onDragEnd}
         onClick={() => rest.onOpen(node.path)}
         onDoubleClick={() => rest.onStartRename(node.path)}
         className="flex items-center gap-1.5 w-full"
@@ -467,7 +485,7 @@ function FileItem({ node, depth, ...rest }: ItemProps & { node: FileNode }) {
           background: isActive ? 'var(--color-accent-bg)' : 'transparent',
           border: 'none',
           borderLeft: `2px solid ${isActive ? 'var(--color-accent-orange)' : 'transparent'}`,
-          cursor: 'pointer',
+          cursor: 'grab',
           color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
           fontSize: '0.6875rem',
           fontFamily: 'JetBrains Mono, monospace',
@@ -572,6 +590,9 @@ export default function FileExplorer() {
   const [creatingInDir, setCreatingInDir] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
 
+  const [draggedPath, setDraggedPath] = useState<string | null>(null)
+  const [dragOverDir, setDragOverDir] = useState<string | null>(null)
+
   // Touch / no-hover devices always show row actions (otherwise users can't
   // discover them without a hover state).
   const alwaysShowActions = typeof window !== 'undefined'
@@ -643,6 +664,22 @@ export default function FileExplorer() {
     renameFile(oldPath, newPath)
     setRenaming(null)
   }, [renameFile])
+
+  const handleDragStart = useCallback((path: string) => setDraggedPath(path), [])
+  const handleDragEnd = useCallback(() => { setDraggedPath(null); setDragOverDir(null) }, [])
+  const handleDragEnterDir = useCallback((dirPath: string) => setDragOverDir(dirPath), [])
+  const handleDragLeaveDir = useCallback((dirPath: string) => {
+    setDragOverDir((cur) => cur === dirPath ? null : cur)
+  }, [])
+  const handleDropOnDir = useCallback((dirPath: string) => {
+    if (draggedPath) {
+      const base = draggedPath.split('/').pop()!
+      const newPath = `${dirPath}/${base}`
+      if (newPath !== draggedPath) renameFile(draggedPath, newPath)
+    }
+    setDraggedPath(null)
+    setDragOverDir(null)
+  }, [draggedPath, renameFile])
 
   const tree = buildTree(files)
 
@@ -780,6 +817,7 @@ export default function FileExplorer() {
               creatingInDir={creatingInDir}
               alwaysShowActions={alwaysShowActions}
               files={files}
+              dragOverDir={dragOverDir}
               onOpen={openFile}
               onDelete={deleteFile}
               onCreateInDir={startCreateInDir}
@@ -788,6 +826,11 @@ export default function FileExplorer() {
               onStartRename={startRename}
               onCommitRename={commitRename}
               onCancelRename={() => setRenaming(null)}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragEnterDir={handleDragEnterDir}
+              onDragLeaveDir={handleDragLeaveDir}
+              onDropOnDir={handleDropOnDir}
             />
           ))
         )}
