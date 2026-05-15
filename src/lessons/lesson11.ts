@@ -35,6 +35,9 @@ Right-click a file (or hover and click the rename icon) to move it. dbt identifi
     'models/dim_customers.sql': DIM_CUSTOMERS_TABLE,
     'models/dim_countries.sql': DIM_COUNTRIES,
     'models/fct_revenue_by_customer.sql': FCT_REVENUE_BY_CUSTOMER,
+    'models/staging/.gitkeep': '',
+    'models/intermediate/.gitkeep': '',
+    'models/marts/.gitkeep': '',
     'seeds/countries.csv': COUNTRIES_CSV,
   },
   seeds: {
@@ -45,7 +48,7 @@ Right-click a file (or hover and click the rename icon) to move it. dbt identifi
   tasks: [
     {
       id: 'move-staging',
-      prompt: 'Move both `stg_customers.sql` and `stg_orders.sql` into a new `models/staging/` folder. (Rename each file to `models/staging/<name>.sql`.)',
+      prompt: 'Move both `stg_customers.sql` and `stg_orders.sql` into the `models/staging/` folder. (Rename each file to `models/staging/<name>.sql`.)',
       hint: 'Right-click a file (or hover for the rename icon) and change the path to `models/staging/stg_customers.sql`.',
       validate: (s) =>
         Boolean(s.files['models/staging/stg_customers.sql']) &&
