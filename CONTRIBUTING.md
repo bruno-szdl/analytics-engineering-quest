@@ -12,6 +12,10 @@ npm run build    # tsc -b + vite build
 
 There's no automated test suite — correctness is checked by playing through the affected level(s) in the dev server. The TypeScript compiler is your safety net; treat a clean `npm run build` as the floor.
 
+### Analytics (production builds only)
+
+The prod site uses Cloudflare Web Analytics (free, no cookies, no tracking pixels). The beacon loads only when `VITE_CF_ANALYTICS_TOKEN` is set at build time, so dev and preview builds never ping the prod stats. Copy `.env.example` to `.env.local` and fill the token if you're deploying your own instance; otherwise leave it unset.
+
 ## Repository layout
 
 ```

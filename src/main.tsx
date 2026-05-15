@@ -12,6 +12,17 @@ const prefersDark = !window.matchMedia('(prefers-color-scheme: light)').matches
 const theme = saved ?? (prefersDark ? 'dark' : 'light')
 if (theme === 'light') document.documentElement.dataset.theme = 'light'
 
+// Cloudflare Web Analytics — only loads when VITE_CF_ANALYTICS_TOKEN is set at
+// build time, so dev / preview builds never ping the prod beacon.
+const cfToken = import.meta.env.VITE_CF_ANALYTICS_TOKEN
+if (cfToken) {
+  const script = document.createElement('script')
+  script.defer = true
+  script.src = 'https://static.cloudflareinsights.com/beacon.min.js'
+  script.setAttribute('data-cf-beacon', JSON.stringify({ token: cfToken }))
+  document.head.appendChild(script)
+}
+
 const rootEl = document.getElementById('root')
 if (!rootEl) throw new Error('Root element not found')
 
