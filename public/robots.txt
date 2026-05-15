@@ -1,0 +1,18 @@
+# dbt quest robots.txt
+# Allow all crawlers to index the site
+
+User-agent: *
+Allow: /
+
+# Disallow social media bots to prevent excessive crawling
+User-agent: facebookexternalhit
+Disallow: /
+
+User-agent: Twitterbot
+Disallow: /
+
+# Sitemap location
+Sitemap: https://dbtquest.io/sitemap.xml
+
+# Crawl delay (milliseconds between requests)
+Crawl-delay: 1

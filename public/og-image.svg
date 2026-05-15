@@ -1,0 +1,59 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <!-- Background: dark gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1c2128;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bgGradient)"/>
+
+  <!-- Accent stripe on left -->
+  <rect width="8" height="630" fill="#ff694a"/>
+
+  <!-- Logo/Title area -->
+  <g>
+    <!-- "dbt" in orange -->
+    <text x="80" y="200" font-family="IBM Plex Sans, sans-serif" font-size="120" font-weight="700" fill="#ff694a" letter-spacing="-2">dbt</text>
+
+    <!-- "quest" in white -->
+    <text x="430" y="200" font-family="IBM Plex Sans, sans-serif" font-size="120" font-weight="700" fill="#e6edf3" letter-spacing="-2">quest</text>
+
+    <!-- Tagline -->
+    <text x="80" y="280" font-family="IBM Plex Sans, sans-serif" font-size="32" font-weight="400" fill="#c9d1d9">Learn dbt interactively</text>
+
+    <!-- Description -->
+    <text x="80" y="340" font-family="IBM Plex Sans, sans-serif" font-size="24" font-weight="400" fill="#8b949e">15 hands-on lessons • No setup required • Learn in your browser</text>
+
+    <!-- Feature icons + text -->
+    <g>
+      <!-- Icon 1: Code -->
+      <rect x="80" y="400" width="280" height="140" rx="8" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <text x="110" y="445" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="600" fill="#ff694a">💻 Code in Browser</text>
+      <text x="110" y="475" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">Monaco Editor + DuckDB</text>
+      <text x="110" y="510" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">No installation needed</text>
+
+      <!-- Icon 2: Build DAG -->
+      <rect x="420" y="400" width="280" height="140" rx="8" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <text x="450" y="445" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="600" fill="#ff694a">🔗 See Your DAG</text>
+      <text x="450" y="475" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">Visual lineage graph</text>
+      <text x="450" y="510" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">Understand dependencies</text>
+
+      <!-- Icon 3: Complete Course -->
+      <rect x="760" y="400" width="280" height="140" rx="8" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <text x="790" y="445" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="600" fill="#ff694a">🎯 Learn Core dbt</text>
+      <text x="790" y="475" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">Models, refs, tests, docs</text>
+      <text x="790" y="510" font-family="IBM Plex Sans, sans-serif" font-size="16" font-weight="400" fill="#8b949e">Production-ready patterns</text>
+    </g>
+
+    <!-- CTA -->
+    <g>
+      <rect x="80" y="580" width="220" height="50" rx="8" fill="#ff694a"/>
+      <text x="190" y="615" font-family="IBM Plex Sans, sans-serif" font-size="18" font-weight="600" fill="#0d1117" text-anchor="middle">Start Learning</text>
+    </g>
+
+    <!-- URL -->
+    <text x="1100" y="615" font-family="JetBrains Mono, monospace" font-size="16" font-weight="400" fill="#6e7681" text-anchor="end">dbtquest.io</text>
+  </g>
+</svg>

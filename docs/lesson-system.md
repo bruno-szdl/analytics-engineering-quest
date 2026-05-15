@@ -1,55 +1,122 @@
 # Lesson system architecture
 
-How the dbt-quest curriculum is structured in code. Mirrors the memory file Claude Code keeps for this project.
+How the dbt-quest curriculum is structured in code.
 
-## Curriculum
+## Curriculum overview
 
-31 levels live at `src/levels/level01.ts–level31.ts`, registered in `src/levels/index.ts`. The same file exports 9 `modules` (blocks):
+**15 lessons (IDs 0–14)** live at `src/lessons/lesson00.ts–lesson14.ts`, registered in `src/lessons/index.ts`.
 
-1. First contact with dbt (L1–4)
-2. Multiple models and dependencies (L5–8)
-3. Materializations (L9–10)
-4. Data quality and testing (L11–15)
-5. Sources and seeds (L16–20)
-6. Project structure (L21–23)
-7. Ephemeral models (L24–25)
-8. Incremental models (L26–28)
-9. Snapshots (L29–31)
+- **Lesson 0**: Introduction (landing page only)
+- **Lessons 1–14**: Progressive hands-on tutorials
 
-## Level interface (`src/engine/types.ts`)
+Topic progression:
+1. Your first dbt model
+2. ref() and the DAG
+3. Multi-step pipelines
+4. Materializations: view vs table
+5. Selecting models (--select, -s flags)
+6. Sources (source() declarations)
+7. Seeds (CSV loading)
+8. Data tests: not_null & unique
+9. Relationships & accepted_values
+10. Documentation (descriptions in YAML)
+11. Project structure: staging/intermediate/marts
+12. Selecting subsets: unions & graph operators
+13. Custom (singular) tests
+14. Putting it all together: dbt build
 
-- `id` — numeric, matches lesson order (1–31).
-- `chapter` — block id the level belongs to.
-- `title`, `description`, `hint`, `badge`, `quiz` — lesson content.
-- `initialFiles` — starter files the learner sees on load.
-- `seeds` — CSVs auto-registered into DuckDB on level load. Keys of form `"raw.customers"` register as DuckDB table `raw__customers` (to match `{{ source('raw', 'customers') }}`).
-- `preRanModels` — models to silently materialize on load so the learner starts in a known state.
-- `goal.description` and optional `goal.dagShape` — the "ghost" DAG overlay.
-- `requiredSteps?: ('files' | 'run' | 'test')[]` — drives the Progress checklist. Empty array shows no steps; omit for the default set.
-- `manualCompletion?: boolean` — surfaces a "Mark complete" button in the Progress panel. Used for concept lessons with no mechanical validation. Pair with `manuallyMarked(state)` in `validate()`.
-- `validate(state) => { passed, reason? }` — the gate to completion.
+## Lesson interface (`src/engine/types.ts`)
+
+- `id` — numeric, 0–14. Matches lesson order.
+- `title` — short lesson name.
+- `concept` — markdown-formatted explanation. Supports `**bold**`, `` `code` ``, fenced blocks, lists.
+- `initialFiles` — starter files the learner sees (e.g., `{ 'models/foo.sql': '...' }`).
+- `openFiles` — which file tabs auto-open on load (optional).
+- `seeds` — CSV data keyed by warehouse table name (e.g., `{ 'raw.customers': CSV_STRING }`). Auto-registered into DuckDB on lesson load.
+- `preRanModels` — models to silently materialize on load so the learner starts in a known state (optional).
+- `panels` — which context panels to show (`['files', 'warehouse', 'lineage']`). Once unlocked, panels stay visible. Omit or pass `ALL_PANELS` to show all.
+- `tasks` — array of `{ id, prompt, hint?, validate(state) => boolean }`. Each task is a learner goal with a validation function.
+- `quiz` — optional end-of-lesson multiple-choice: `{ question, options: [a, b, c, d], correctIndex, explanation }`.
+- `goal` — optional `{ dagShape: { nodes, edges } }` to show a target DAG shape.
+- `furtherReading` — optional links to dbt docs: `[{ label, url }, ...]`.
+
+## Engine pipeline
+
+1. **commandParser.ts** — parses `dbt <subcommand>` and selector syntax (`+model`, `tag:`, etc.)
+2. **compiler.ts** — extracts `ref()`, `source()`, `config()` from SQL/YAML
+3. **dagBuilder.ts** — builds node/edge graph; infers layers (staging/intermediate/mart) from names
+4. **executor.ts** — compiles SQL, handles VIEW vs TABLE materialization, runs against DuckDB
+5. **runner.ts** — dispatches `dbt run/test/build/show/compile/seed/snapshot`, formats output
+6. **tests.ts** — parses `schema.yml` generic tests and runs them as SQL
+7. **validators.ts** — reusable check functions for lesson tasks
 
 ## Engine capabilities
 
-- `dbt seed` — loads every `seeds/*.csv` in state.files into DuckDB and records names in `loadedSeeds`.
-- `dbt snapshot` — processes `snapshots/*.sql` files with strategy=timestamp. First run creates the SCD-2 table with `dbt_valid_from`/`dbt_valid_to`/`dbt_updated_at`. Subsequent runs close out rows whose `updated_at` advanced and insert new versions. Snapshot names enter `ranModels` so `dbt show --select` works on them.
-- Ephemeral materialization is inlined as CTEs at `plan()` time (`inlineEphemeralCtes` in `executor.ts`). Ephemerals are never materialized and are NOT added to `ranModels`.
-- Incremental materialization is simulated as a full table rebuild; terminal prints a note. Config (`strategy`, `unique_key`) is validated via regex on the SQL.
-- `{% ... %}` Jinja blocks are stripped and `{{ this }}` is resolved to the model name before the SQL reaches DuckDB.
-- Executor captures each model's output columns → `state.modelColumns` → `outputColumnsInclude` validator.
-- `buildSucceeded` flag is set only when `dbt build` completes with no run/test failures.
+- **`dbt run`** — materializes models in DAG order, marks them in `state.ranModels`.
+- **`dbt test`** — runs generic tests from `schema.yml` (not_null, unique, relationships, accepted_values) and singular tests from `tests/*.sql`. Results go in `state.testResults`.
+- **`dbt build`** — runs models then tests together, setting `state.buildSucceeded` only if both succeed.
+- **`dbt show --select <model>`** — previews materialized result, marks in `state.shownModels`.
+- **`dbt compile`** — compiles Jinja ({{ ref() }}, {{ source() }}, {{ config() }}), marks in `state.compiledModels`.
+- **`dbt seed`** — loads CSVs from `seeds/*.csv` into DuckDB, records in `state.loadedSeeds`.
+- **Selectors** — `+model`, `model+`, `tag:`, graph operators. Parsed by commandParser, resolved in runner.
+- **Jinja simulation** — `{% ... %}` blocks are stripped; `{{ ref() }}` and `{{ source() }}` are expanded to table names.
+- **Materialization** — default is VIEW; config `{{ config(materialized='table') }}` creates a TABLE. Ephemeral (inlined as CTE) and incremental (simulated as full rebuild) are parsed but only used in advanced lessons.
 
 ## Validators (`src/engine/validators.ts`)
 
-`hasModel`, `modelRefs`, `modelRan`, `testPassed`, `sourceDefined`, `modelMaterialization`, `outputColumnsInclude`, `lineageHasEdge`, `lineageHasSourceEdge`, `testDefinitionsInclude`, `allTestsPass`, `buildSucceeded`, `seedLoaded`, `manuallyMarked`, `snapshotRanAtLeast`.
+Reusable check functions for lessons:
 
-## Engine quirk
+- `hasModel(state, name)` — file exists
+- `modelRan(state, name)` — ran successfully
+- `modelRefs(state, modelName, refName)` — uses ref()
+- `modelMaterialization(state, name, 'table'|'view')` — correct materialization
+- `lineageHasEdge(state, from, to)` — dependency edge exists
+- `sourceDefined(state, sourceName, tableName)` — source declared in YAML
+- `testPassed(state, modelName)` — test passed
+- `allTestsPass(state, modelName)` — all tests on model passed
+- `outputColumnsInclude(state, modelName, ['col1', 'col2', ...])` — output has columns
+- `buildSucceeded(state)` — `dbt build` completed with no failures
 
-`DROP VIEW IF EXISTS x` errors in DuckDB when `x` exists as a TABLE (and vice versa). `executor.ts` wraps both drops in try/catch so materialization switches mid-level do not fail.
+Write new validators in `src/engine/validators.ts` if a check is reusable; otherwise inline in the lesson's `validate()` function.
 
-## Adding a new level
+## Task validation
 
-1. Create `src/levels/levelNN.ts` exporting a `Level`.
-2. Import it in `src/levels/index.ts` and push it onto `levels`.
-3. Add its id to the appropriate module's `levelIds`.
-4. For purely conceptual lessons, set `manualCompletion: true` and validate with `manuallyMarked(state)`.
+Tasks validate purely from `GameState`. Once a task is marked done (`state.completedTasks` contains its key), it's never re-evaluated. This allows validators to key off transient state (e.g., "a test failed") and remain sticky.
+
+```ts
+task = {
+  id: 'my-task',
+  prompt: 'What to do',
+  hint: 'Optional nudge',
+  validate: (state) => {
+    // Return true if learner succeeded, false if not yet
+    return modelRan(state, 'my_model')
+  }
+}
+```
+
+## Project evolution (canonical snapshots)
+
+`src/lessons/_canonical.ts` holds SQL/YAML snapshots of the shared e-commerce project at each milestone. Each lesson imports the snapshots it needs, so the project evolves coherently. For example:
+
+- L1: `STG_CUSTOMERS_HARDCODED` (one staging model, hardcoded raw table name)
+- L6: `STG_CUSTOMERS_SOURCED` (same model, now uses `source()`)
+- L14: All 6 models (staging, intermediate, marts) fully wired with tests
+
+When adding a lesson, check if you need a new snapshot or can reuse existing ones. Update `_canonical.ts` if the project state changes.
+
+## Adding a new lesson
+
+See `CONTRIBUTING.md` for the full walkthrough. In brief:
+
+1. Create `src/lessons/lessonNN.ts` with type `Lesson`.
+2. Update `src/lessons/index.ts`: import and push to `lessons[]`.
+3. Update `src/lessons/_canonical.ts` if the project state changes.
+4. Update i18n: `src/i18n/lessons/pt.json` and `src/i18n/lessons/es.json` for any student-facing text.
+5. Test: `npm run dev`, clear localStorage, play through the lesson.
+
+## Notes
+
+- **No automated tests**: Correctness is verified by playing through lessons in the browser. TypeScript strict mode is the safety net.
+- **Jinja is simplified**: We don't execute full Jinja templates; we only parse and expand `{{ ref() }}`, `{{ source() }}`, and `{{ config() }}`. Real Jinja features (filters, loops) are left to dbt docs or production dbt.
+- **Incremental & snapshot support**: Engine code exists for both, but no lessons use them yet (planned for v2).

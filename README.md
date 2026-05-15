@@ -54,3 +54,49 @@ After finishing dbt Quest you'll be ready to set up a real dbt project against D
 ## Play Online
 
 dbt Quest is live at [dbtquest.io](https://dbtquest.io). Start with Lesson 0 and progress through 15 lessons.
+
+## Deployment
+
+### Vercel Deployment
+
+The site is configured to deploy to Vercel via `vercel.json`:
+
+```bash
+vercel deploy      # Deploy to preview
+vercel deploy --prod  # Deploy to production
+```
+
+The build is optimized with proper headers for static assets (robots.txt, sitemap.xml, og-image.svg) and cache control settings.
+
+### Environment Variables
+
+For production builds, set `VITE_CF_ANALYTICS_TOKEN` to enable Cloudflare Web Analytics:
+
+```bash
+# In Vercel dashboard or .env.local:
+VITE_CF_ANALYTICS_TOKEN=your_token_here
+```
+
+Dev and preview builds don't send analytics (token is unset).
+
+### SEO & Metadata
+
+The site includes comprehensive SEO setup:
+
+- **Meta tags**: Title, description, keywords in `index.html`
+- **Open Graph**: `og:title`, `og:description`, `og:image` for social sharing
+- **Twitter Card**: Custom Twitter preview with `twitter:card`, `twitter:image`
+- **Robots.txt**: `/robots.txt` for search engine crawling
+- **Sitemap.xml**: `/sitemap.xml` with all lesson URLs and priorities
+- **Structured data**: JSON-LD `EducationalWebApplication` schema
+- **OG Image**: `/og-image.svg` (convert to PNG for production: `svgexport og-image.svg og-image.png 1200 630`)
+
+**Note on og-image.png**: The og-image is currently served as SVG. For better compatibility with older social platforms, convert it to PNG:
+
+```bash
+# Using svgexport (npm install -g svgexport):
+cd public
+svgexport og-image.svg og-image.png 1200 630
+```
+
+Then update `index.html` to reference `/og-image.png` instead of `/og-image.svg`.
