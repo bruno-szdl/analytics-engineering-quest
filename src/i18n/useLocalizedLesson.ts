@@ -9,6 +9,7 @@ type LessonLocale = {
   tasks?: Array<{ prompt?: string; hint?: string }>
   quiz?: { question?: string; options?: string[]; explanation?: string }
   furtherReading?: Array<{ label?: string }>
+  initialFiles?: Record<string, string>
 }
 
 const localeMap: Record<string, Record<string, LessonLocale>> = {
@@ -36,6 +37,26 @@ export function localizedLessonTitle(lesson: Lesson, lang: string): string {
   return override(map?.[String(lesson.id)]?.title, lesson.title)
 }
 
+/**
+ * Overlay translated file contents on top of the lesson's English defaults at
+ * load time. Only files whose initial content carries student-facing comments
+ * (SQL/YAML scaffolding instructions) need an entry — anything missing falls
+ * through to the original English content.
+ */
+export function localizedInitialFiles(
+  lesson: Lesson,
+  lang: string,
+): Record<string, string> {
+  if (lang === 'en') return { ...lesson.initialFiles }
+  const overrides = localeMap[lang]?.[String(lesson.id)]?.initialFiles
+  if (!overrides) return { ...lesson.initialFiles }
+  const merged: Record<string, string> = { ...lesson.initialFiles }
+  for (const [path, content] of Object.entries(overrides)) {
+    if (path in merged) merged[path] = content
+  }
+  return merged
+}
+
 export function useLocalizedLesson(lesson: Lesson): Lesson {
   const { i18n } = useTranslation()
   const lang = i18n.language
@@ -50,6 +71,7 @@ export function useLocalizedLesson(lesson: Lesson): Lesson {
 
   return {
     ...lesson,
+    initialFiles: localizedInitialFiles(lesson, lang),
     title: override(locale.title, lesson.title),
     concept: override(locale.concept, lesson.concept),
     tasks: lesson.tasks.map((task, i) => ({

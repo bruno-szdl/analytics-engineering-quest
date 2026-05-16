@@ -68,7 +68,11 @@
     "furtherReading": [
       { "label": "Función ref()" },
       { "label": "Sobre Jinja" }
-    ]
+    ],
+    "initialFiles": {
+      "models/dim_customers.sql": "-- Reemplaza esta línea por un SELECT que use {{ ref('stg_customers') }}.\n",
+      "models/customer_emails.sql": "-- Reemplaza esta línea por un SELECT de id y email desde {{ ref('stg_customers') }}.\n"
+    }
   },
   "3": {
     "title": "Pipelines de múltiples etapas",
@@ -111,7 +115,11 @@
     },
     "furtherReading": [
       { "label": "Cómo estructuramos proyectos dbt" }
-    ]
+    ],
+    "initialFiles": {
+      "models/int_paid_orders.sql": "-- Selecciona todas las columnas de stg_orders, pero solo las filas donde status = 'paid'.\n-- Usa {{ ref('stg_orders') }} para que dbt sepa de la dependencia.\n",
+      "models/fct_revenue_by_customer.sql": "-- Suma amount desde int_paid_orders, agrupado por customer_id.\n-- Usa {{ ref('int_paid_orders') }} para que dbt sepa de la dependencia.\n"
+    }
   },
   "4": {
     "title": "Materializations: view vs table",
@@ -220,7 +228,10 @@
     },
     "furtherReading": [
       { "label": "Sources" }
-    ]
+    ],
+    "initialFiles": {
+      "models/sources.yml": "version: 2\n\nsources:\n  - name: raw\n    tables:\n      # agrega las entradas \"- name: customers\" y \"- name: orders\" abajo\n"
+    }
   },
   "7": {
     "title": "Seeds",
@@ -306,7 +317,10 @@
     },
     "furtherReading": [
       { "label": "Data tests" }
-    ]
+    ],
+    "initialFiles": {
+      "models/schema.yml": "version: 2\n\nmodels:\n  - name: stg_customers\n    columns:\n      - name: id\n        data_tests:\n          # agrega los dos data tests debajo de esta línea (uno por línea, con prefijo \"- \")\n"
+    }
   },
   "9": {
     "title": "Relationships & accepted_values",
@@ -349,7 +363,10 @@
     },
     "furtherReading": [
       { "label": "Referencia de data tests genéricos" }
-    ]
+    ],
+    "initialFiles": {
+      "models/schema.yml": "version: 2\n\nmodels:\n  - name: stg_customers\n    columns:\n      - name: id\n        data_tests:\n          - not_null\n          - unique\n      - name: email\n        data_tests:\n          - not_null\n  - name: stg_orders\n    columns:\n      - name: status\n        data_tests:\n          # agrega aquí un data test accepted_values\n      - name: customer_id\n        data_tests:\n          # agrega aquí un data test relationships\n"
+    }
   },
   "10": {
     "title": "Documentación",
@@ -493,7 +510,10 @@
     },
     "furtherReading": [
       { "label": "Singular data tests" }
-    ]
+    ],
+    "initialFiles": {
+      "tests/no_future_signups.sql": "-- Devuelve filas donde created_at está en el futuro.\n-- Los singular tests fallan cuando devuelven alguna fila. Así que vacío = pass.\n\nselect *\nfrom {{ ref('stg_orders') }}\nwhere created_at > current_date"
+    }
   },
   "14": {
     "title": "Juntando todo: dbt build",

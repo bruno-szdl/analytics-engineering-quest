@@ -45,7 +45,7 @@
   },
   "intro": {
     "tagline": "Aprenda dbt grátis no seu navegador.",
-    "subTagline": "{{count}} lições interativas e curtas. SQL de verdade, um warehouse de verdade, um DAG de verdade. Tudo rodando nesta página. Sem instalação, sem cadastro.",
+    "subTagline": "{{count}} lições interativas e curtas. SQL de verdade, um warehouse de verdade, uma DAG de verdade. Tudo rodando nesta página. Sem instalação, sem cadastro.",
     "ctaBegin": "Começar pela Lição 1 ›",
     "ctaContinue": "Continuar de onde parei ›",
     "ctaBeginFull": "Começar pela Lição 1: seu primeiro dbt model›",

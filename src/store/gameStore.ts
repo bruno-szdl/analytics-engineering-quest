@@ -8,6 +8,8 @@ import { registerCsv, resetDb } from '../engine/duckdb'
 import { errorMessage } from '../engine/errors'
 import { safeStorage } from './safeStorage'
 import { ALL_PANELS, type PanelKey, type LastRunInfo } from '../engine/types'
+import i18n from '../i18n'
+import { localizedInitialFiles } from '../i18n/useLocalizedLesson'
 
 export type BottomTab = 'commands' | 'results'
 
@@ -408,7 +410,8 @@ export const useGameStore = create<StoreState>()(
           checkTasksTimer = null
         }
 
-        const initialKeys = Object.keys(lesson.initialFiles)
+        const localizedFiles = localizedInitialFiles(lesson, i18n.language)
+        const initialKeys = Object.keys(localizedFiles)
         const filesToOpen = lesson.openFiles ?? [initialKeys[0]].filter(Boolean)
         const firstFile = filesToOpen[0] ?? initialKeys[0] ?? null
 
@@ -425,7 +428,7 @@ export const useGameStore = create<StoreState>()(
 
         set((s) => ({
           editorKey: s.editorKey + 1,
-          files: { ...lesson.initialFiles },
+          files: localizedFiles,
           activeFile: firstFile,
           openTabs: filesToOpen.length > 0 ? new Set(filesToOpen) : new Set<string>(),
           ranModels: new Set<string>(),
@@ -463,7 +466,7 @@ export const useGameStore = create<StoreState>()(
           const preRanSet = new Set<string>()
           const preRanColumns: Record<string, string[]> = {}
           if (lesson.preRanModels?.length) {
-            const execPlan = plan(lesson.initialFiles)
+            const execPlan = plan(localizedFiles)
             const toRun = execPlan.sorted.filter((m) => lesson.preRanModels!.includes(m.name))
             const outcomes = await materializeModels(toRun)
             for (const o of outcomes) {
