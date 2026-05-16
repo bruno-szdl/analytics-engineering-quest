@@ -1,7 +1,7 @@
 import type { ParsedCommand, SelectorGroup, SelectorTerm } from './commandParser'
 import { parseCommand } from './commandParser'
 import { materializeModels, plan, previewModel, type ModelOutcome } from './executor'
-import { parseTests, runTests, parseSingularTests, runSingularTests, type TestDef, type TestOutcome, type SingularTestOutcome } from './tests'
+import { parseTests, runTests, parseSingularTests, runSingularTests, getYamlDiagnostics, formatYamlDiagnostic, type TestDef, type TestOutcome, type SingularTestOutcome } from './tests'
 import { type CompiledModel, collectModels, getFileStem } from './compiler'
 import { buildDag } from './dagBuilder'
 import { registerCsv } from './duckdb'
@@ -478,6 +478,12 @@ export async function execute(
       }
       if (seedFiles.length > 0) lines.push({ text: '' })
 
+      const buildYamlDiags = getYamlDiagnostics(state.files)
+      for (const d of buildYamlDiags) {
+        lines.push({ text: `Warning: ${d.path} — ${formatYamlDiagnostic(d)}`, color: 'yellow' })
+      }
+      if (buildYamlDiags.length > 0) lines.push({ text: '' })
+
       const modelNames = new Set(selected.map((m) => m.name))
       const tests = parseTests(state.files, modelNames)
       const testsByModel = new Map<string, TestDef[]>()
@@ -683,6 +689,12 @@ export async function execute(
 
   if (command.type === 'test') {
     // Separate path for dbt test (without models)
+    const yamlDiags = getYamlDiagnostics(state.files)
+    for (const d of yamlDiags) {
+      lines.push({ text: `Warning: ${d.path} — ${formatYamlDiagnostic(d)}`, color: 'yellow' })
+    }
+    if (yamlDiags.length > 0) lines.push({ text: '' })
+
     const modelNames = new Set(selected.map((m) => m.name))
     const tests = parseTests(state.files, modelNames)
     const singularTests = parseSingularTests(state.files)

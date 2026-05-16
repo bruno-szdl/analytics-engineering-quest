@@ -1,3 +1,4 @@
+import { load } from 'js-yaml'
 import { runQuery } from './duckdb'
 import { errorMessage } from './errors'
 
@@ -22,13 +23,17 @@ export interface TestOutcome extends TestDef {
   error?: string
 }
 
+type YamlMap = Record<string, unknown>
+
 /**
- * Parse `schema.yml` style test declarations. Supports the four most-used
- * generic tests: `not_null`, `unique`, `accepted_values`, and `relationships`.
+ * Parse `schema.yml` style test declarations using a real YAML parser.
+ * Supports the four generic tests: `not_null`, `unique`, `accepted_values`,
+ * and `relationships`. Both the `arguments:` wrapper form and the direct form
+ * are accepted (dbt supports both).
  *
- * The parser is hand-rolled so it can stay in sync with the existing
- * indent-based YAML conventions used elsewhere in the engine. It tracks state
- * for multi-line test configs (accepted_values / relationships).
+ * Because we use js-yaml, indentation must be structurally valid YAML —
+ * wrong indentation produces a different parse tree and the test won't be
+ * detected, which is the correct behaviour for a learning tool.
  */
 export function parseTests(files: Record<string, string>, modelNames: Set<string>): TestDef[] {
   const tests: TestDef[] = []
@@ -37,147 +42,106 @@ export function parseTests(files: Record<string, string>, modelNames: Set<string
     if (!path.startsWith('models/')) continue
     if (!path.endsWith('.yml') && !path.endsWith('.yaml')) continue
 
-    let inModels = false
-    let modelName = ''
-    let columnName = ''
-    let modelIndent = -1
-    let columnIndent = -1
-
-    // State for a pending multi-line test config.
-    type Pending = { kind: 'accepted_values' | 'relationships'; indent: number; partial: TestDef }
-    let pending: Pending | null = null
-    const flushPending = () => {
-      if (!pending) return
-      // Only emit if we collected the required params.
-      if (pending.kind === 'accepted_values' && pending.partial.values?.length) {
-        tests.push(pending.partial)
-      } else if (pending.kind === 'relationships' && pending.partial.to && pending.partial.field) {
-        tests.push(pending.partial)
-      }
-      pending = null
+    let parsed: unknown
+    try {
+      parsed = load(content)
+    } catch {
+      continue
     }
 
-    for (const raw of content.split('\n')) {
-      const s = raw.trimStart()
-      if (!s || s.startsWith('#')) continue
-      const indent = raw.length - s.length
+    if (!parsed || typeof parsed !== 'object') continue
+    const root = parsed as YamlMap
+    const models = root['models']
+    if (!Array.isArray(models)) continue
 
-      if (indent === 0) {
-        flushPending()
-        inModels = s.startsWith('models:')
-        modelName = ''
-        columnName = ''
-        modelIndent = -1
-        columnIndent = -1
-        continue
-      }
-      if (!inModels) continue
+    for (const model of models) {
+      if (!model || typeof model !== 'object') continue
+      const m = model as YamlMap
+      const modelName = typeof m['name'] === 'string' ? m['name'] : ''
+      if (!modelName || !modelNames.has(modelName)) continue
 
-      // Close out a pending multi-line test once we leave its indent block.
-      if (pending && indent <= pending.indent) flushPending()
+      const columns = m['columns']
+      if (!Array.isArray(columns)) continue
 
-      const nameMatch = s.match(/^- name:\s+(\S+)/)
-      if (nameMatch) {
-        flushPending()
-        if (modelIndent === -1 || indent <= modelIndent) {
-          modelName = modelNames.has(nameMatch[1]) ? nameMatch[1] : ''
-          columnName = ''
-          modelIndent = indent
-          columnIndent = -1
-        } else if (modelName) {
-          columnName = nameMatch[1]
-          columnIndent = indent
-        }
-        continue
-      }
+      for (const col of columns) {
+        if (!col || typeof col !== 'object') continue
+        const c = col as YamlMap
+        const columnName = typeof c['name'] === 'string' ? c['name'] : ''
+        if (!columnName) continue
 
-      const inColumnTests =
-        modelName && columnName && columnIndent !== -1 && indent > columnIndent
+        const dataTests = c['data_tests']
+        if (!Array.isArray(dataTests)) continue
 
-      // Single-line tests: `- not_null` / `- unique`.
-      if (inColumnTests) {
-        const simple = s.match(/^- (not_null|unique)\b/)
-        if (simple) {
-          flushPending()
-          tests.push({
-            id: `${simple[1]}_${modelName}_${columnName}`,
-            kind: simple[1] as TestKind,
-            model: modelName,
-            column: columnName,
-          })
-          continue
-        }
-
-        // Start of a multi-line `accepted_values:` block.
-        const av = s.match(/^- accepted_values:\s*$/)
-        if (av) {
-          flushPending()
-          pending = {
-            kind: 'accepted_values',
-            indent,
-            partial: {
-              id: `accepted_values_${modelName}_${columnName}`,
-              kind: 'accepted_values',
-              model: modelName,
-              column: columnName,
-              values: [],
-            },
-          }
-          continue
-        }
-
-        // Start of a multi-line `relationships:` block.
-        const rel = s.match(/^- relationships:\s*$/)
-        if (rel) {
-          flushPending()
-          pending = {
-            kind: 'relationships',
-            indent,
-            partial: {
-              id: `relationships_${modelName}_${columnName}`,
-              kind: 'relationships',
-              model: modelName,
-              column: columnName,
-            },
-          }
-          continue
-        }
-      }
-
-      // Inside an open multi-line test, harvest its parameters.
-      // `arguments:` is just a pass-through container — skip it and read children.
-      if (pending && indent > pending.indent) {
-        if (s === 'arguments:') continue
-
-        if (pending.kind === 'accepted_values') {
-          // `values: [a, b, c]` (inline list).
-          const inline = s.match(/^values:\s*\[([^\]]*)\]/)
-          if (inline) {
-            pending.partial.values = parseInlineList(inline[1])
+        for (const test of dataTests) {
+          if (typeof test === 'string') {
+            if (test === 'not_null' || test === 'unique') {
+              tests.push({
+                id: `${test}_${modelName}_${columnName}`,
+                kind: test,
+                model: modelName,
+                column: columnName,
+              })
+            }
             continue
           }
-          // `- 'value'` underneath `values:` (block list item).
-          const item = s.match(/^- (.*)$/)
-          if (item && pending.partial.values) {
-            pending.partial.values.push(stripQuotes(item[1].trim()))
-            continue
+
+          if (!test || typeof test !== 'object') continue
+          const t = test as YamlMap
+
+          if ('accepted_values' in t) {
+            const av = t['accepted_values']
+            if (av && typeof av === 'object') {
+              const avMap = av as YamlMap
+              // If arguments: key exists it must be an object — a null arguments:
+              // means the student indented values: at the wrong level.
+              const hasArgs = 'arguments' in avMap
+              const argsObj = hasArgs && avMap['arguments'] && typeof avMap['arguments'] === 'object'
+                ? avMap['arguments'] as YamlMap
+                : null
+              if (hasArgs && !argsObj) continue  // arguments: present but malformed
+              const src = argsObj ?? avMap
+              const values = src['values']
+              if (Array.isArray(values) && values.length > 0) {
+                tests.push({
+                  id: `accepted_values_${modelName}_${columnName}`,
+                  kind: 'accepted_values',
+                  model: modelName,
+                  column: columnName,
+                  values: values.map(String),
+                })
+              }
+            }
           }
-        } else if (pending.kind === 'relationships') {
-          const to = s.match(/^to:\s*ref\(\s*['"]([^'"]+)['"]\s*\)/)
-          if (to) {
-            pending.partial.to = to[1]
-            continue
-          }
-          const field = s.match(/^field:\s*(\S+)/)
-          if (field) {
-            pending.partial.field = stripQuotes(field[1])
-            continue
+
+          if ('relationships' in t) {
+            const rel = t['relationships']
+            if (rel && typeof rel === 'object') {
+              const relMap = rel as YamlMap
+              const hasArgs = 'arguments' in relMap
+              const argsObj = hasArgs && relMap['arguments'] && typeof relMap['arguments'] === 'object'
+                ? relMap['arguments'] as YamlMap
+                : null
+              if (hasArgs && !argsObj) continue  // arguments: present but malformed
+              const src = argsObj ?? relMap
+              const toRaw = typeof src['to'] === 'string' ? src['to'] : ''
+              const field = src['field'] != null ? String(src['field']) : ''
+              const toMatch = toRaw.match(/ref\s*\(\s*['"]([^'"]+)['"]\s*\)/)
+              const to = toMatch ? toMatch[1] : ''
+              if (to && field) {
+                tests.push({
+                  id: `relationships_${modelName}_${columnName}`,
+                  kind: 'relationships',
+                  model: modelName,
+                  column: columnName,
+                  to,
+                  field,
+                })
+              }
+            }
           }
         }
       }
     }
-
-    flushPending()
   }
 
   // De-duplicate by id (last write wins).
@@ -186,18 +150,111 @@ export function parseTests(files: Record<string, string>, modelNames: Set<string
   return [...seen.values()]
 }
 
-function parseInlineList(inner: string): string[] {
-  return inner
-    .split(',')
-    .map((s) => stripQuotes(s.trim()))
-    .filter((s) => s.length > 0)
+export type YamlDiagnosticCode =
+  | 'syntax'
+  | 'acceptedValuesMissingConfig'
+  | 'acceptedValuesWrongIndent'
+  | 'relationshipsMissingConfig'
+  | 'relationshipsWrongIndent'
+
+export interface YamlDiagnostic {
+  path: string
+  code: YamlDiagnosticCode
+  /** Column name involved (structural errors). */
+  column?: string
+  /** Raw js-yaml error message (syntax errors). */
+  raw?: string
 }
 
-function stripQuotes(s: string): string {
-  if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
-    return s.slice(1, -1)
+/**
+ * Returns diagnostics (syntax errors + structural mistakes) for all YAML files
+ * in `files`. Structural checks catch common dbt indentation mistakes that are
+ * valid YAML but represent the wrong schema structure (e.g. `arguments:` null
+ * because `values:` / `to:` / `field:` were indented at the wrong level).
+ *
+ * Returns structured codes — callers translate via i18n or
+ * `formatYamlDiagnostic` for English output (terminal).
+ */
+export function getYamlDiagnostics(files: Record<string, string>): YamlDiagnostic[] {
+  const out: YamlDiagnostic[] = []
+
+  for (const [path, content] of Object.entries(files)) {
+    if (!path.startsWith('models/')) continue
+    if (!path.endsWith('.yml') && !path.endsWith('.yaml')) continue
+
+    let parsed: unknown
+    try {
+      parsed = load(content)
+    } catch (e) {
+      out.push({ path, code: 'syntax', raw: e instanceof Error ? e.message.split('\n')[0] : String(e) })
+      continue
+    }
+
+    if (!parsed || typeof parsed !== 'object') continue
+    const models = (parsed as YamlMap)['models']
+    if (!Array.isArray(models)) continue
+
+    for (const model of models) {
+      if (!model || typeof model !== 'object') continue
+      const columns = (model as YamlMap)['columns']
+      if (!Array.isArray(columns)) continue
+
+      for (const col of columns) {
+        if (!col || typeof col !== 'object') continue
+        const c = col as YamlMap
+        const colName = typeof c['name'] === 'string' ? c['name'] : '?'
+        const dataTests = c['data_tests']
+        if (!Array.isArray(dataTests)) continue
+
+        for (const test of dataTests) {
+          if (!test || typeof test !== 'object') continue
+          const t = test as YamlMap
+
+          if ('accepted_values' in t) {
+            const av = t['accepted_values']
+            if (!av || typeof av !== 'object') {
+              out.push({ path, code: 'acceptedValuesMissingConfig', column: colName })
+              continue
+            }
+            const avMap = av as YamlMap
+            if ('arguments' in avMap && (!avMap['arguments'] || typeof avMap['arguments'] !== 'object')) {
+              out.push({ path, code: 'acceptedValuesWrongIndent', column: colName })
+            }
+          }
+
+          if ('relationships' in t) {
+            const rel = t['relationships']
+            if (!rel || typeof rel !== 'object') {
+              out.push({ path, code: 'relationshipsMissingConfig', column: colName })
+              continue
+            }
+            const relMap = rel as YamlMap
+            if ('arguments' in relMap && (!relMap['arguments'] || typeof relMap['arguments'] !== 'object')) {
+              out.push({ path, code: 'relationshipsWrongIndent', column: colName })
+            }
+          }
+        }
+      }
+    }
   }
-  return s
+
+  return out
+}
+
+/** English formatter for terminal output (engine layer — not i18n). */
+export function formatYamlDiagnostic(d: YamlDiagnostic): string {
+  switch (d.code) {
+    case 'syntax':
+      return d.raw ?? 'YAML syntax error'
+    case 'acceptedValuesMissingConfig':
+      return `Column "${d.column}": accepted_values is missing its configuration block — check indentation.`
+    case 'acceptedValuesWrongIndent':
+      return `Column "${d.column}": values: must be indented inside arguments:, not at the same level.`
+    case 'relationshipsMissingConfig':
+      return `Column "${d.column}": relationships is missing its configuration block — check indentation.`
+    case 'relationshipsWrongIndent':
+      return `Column "${d.column}": to: and field: must be indented inside arguments:, not at the same level.`
+  }
 }
 
 function sqlLiteral(v: string): string {

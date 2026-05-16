@@ -1,4 +1,11 @@
 {
+  "yamlDiagnostics": {
+    "syntax": "Error de sintaxis en YAML: {{message}}",
+    "acceptedValuesMissingConfig": "Columna \"{{column}}\": accepted_values no tiene su bloque de configuración — revisa la indentación.",
+    "acceptedValuesWrongIndent": "Columna \"{{column}}\": values: debe estar indentado dentro de arguments:, no al mismo nivel.",
+    "relationshipsMissingConfig": "Columna \"{{column}}\": relationships no tiene su bloque de configuración — revisa la indentación.",
+    "relationshipsWrongIndent": "Columna \"{{column}}\": to: y field: deben estar indentados dentro de arguments:, no al mismo nivel."
+  },
   "header": {
     "tagline": "Aprende dbt en tu navegador",
     "lesson": "Lección",

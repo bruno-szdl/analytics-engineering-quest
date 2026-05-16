@@ -1,7 +1,9 @@
 import MonacoEditor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import type { editor as MonacoEditorNS, languages, IDisposable } from 'monaco-editor'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getYamlDiagnostics } from '../engine/tests'
 import { useGameStore } from '../store/gameStore'
 
 function detectLanguage(path: string): string {
@@ -78,6 +80,19 @@ export default function Editor() {
 
   const tabPaths = [...openTabs].filter((p) => p in files)
 
+  const yamlErrors = useMemo(() => {
+    const diags = getYamlDiagnostics(files)
+    const byPath: Record<string, string[]> = {}
+    for (const d of diags) {
+      if (!(d.path in byPath)) byPath[d.path] = []
+      const msg = d.code === 'syntax'
+        ? t('yamlDiagnostics.syntax', { message: d.raw ?? '' })
+        : t(`yamlDiagnostics.${d.code}`, { column: d.column })
+      byPath[d.path].push(msg)
+    }
+    return byPath
+  }, [files, t])
+
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-base)' }}>
       <div
@@ -114,7 +129,7 @@ export default function Editor() {
                 }}
               >
                 <button
-                  title={path}
+                  title={yamlErrors[path] ? `YAML: ${yamlErrors[path].join(' | ')}` : path}
                   onClick={() => openFile(path)}
                   className="flex items-center gap-1.5 cursor-pointer"
                   style={{
@@ -130,6 +145,9 @@ export default function Editor() {
                 >
                   <FileIcon path={path} />
                   <span>{basename(path)}</span>
+                  {yamlErrors[path] && (
+                    <span style={{ color: 'var(--color-warning)', fontSize: '0.65rem', lineHeight: 1 }}>⚠</span>
+                  )}
                 </button>
                 <button
                   title={t('files.closeTab')}
@@ -167,6 +185,27 @@ export default function Editor() {
           })}
         </div>
       </div>
+
+      {activeFile && yamlErrors[activeFile] && (
+        <div
+          className="shrink-0 flex items-start gap-2 px-3 py-1.5"
+          style={{
+            background: 'var(--color-warning-bg)',
+            borderBottom: '1px solid var(--color-warning-border)',
+            color: 'var(--color-warning)',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.6875rem',
+            lineHeight: 1.5,
+          }}
+        >
+          <span style={{ flexShrink: 0 }}>⚠</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {yamlErrors[activeFile].map((msg, i) => (
+              <span key={i}>{msg}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden">
         {activeFile === null ? (
